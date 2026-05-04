@@ -55,7 +55,9 @@ Documentación Swagger: `http://localhost:8000/docs`
 https://comite-backend.onrender.com/api/v1
 ```
 
-**Documentación Swagger**: https://comite-backend.onrender.com/docs
+**Documentación Swagger (OpenAPI)**: https://comite-backend.onrender.com/docs
+
+> **Nota para Frontend**: El frontend debe conectar a `https://comite-backend.onrender.com/api/v1`
 
 > **Nota para Frontend**: Reemplazar `http://localhost:8000/api/v1` por la URL de producción cuando el backend esté desplegado en Render.
 
