@@ -10,6 +10,16 @@ Backend FastAPI para el sistema de gestión de protocolos del Comité de Ética.
 
 ### Instalación
 
+#### Opción 1: Docker (Recomendado)
+```bash
+# Construir imagen
+docker build -t comite-backend .
+
+# Ejecutar
+docker run -p 8000:8000 --env-file .env comite-backend
+```
+
+#### Opción 2: Local sin Docker
 ```bash
 # Crear entorno virtual (opcional)
 python -m venv env
@@ -42,8 +52,10 @@ Documentación Swagger: `http://localhost:8000/docs`
 ## URL Base (Producción)
 
 ```
-https://comite-etica-backend.onrender.com/api/v1
+https://comite-backend.onrender.com/api/v1
 ```
+
+**Documentación Swagger**: https://comite-backend.onrender.com/docs
 
 > **Nota para Frontend**: Reemplazar `http://localhost:8000/api/v1` por la URL de producción cuando el backend esté desplegado en Render.
 
