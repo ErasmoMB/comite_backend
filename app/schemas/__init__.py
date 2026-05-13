@@ -59,18 +59,27 @@ class TokenData(BaseModel):
 
 class ExpedienteBase(BaseModel):
     titulo_protocolo: str
+    tipo_tramite: Optional[str] = None
+    facultad: Optional[str] = None
+    prioridad: Optional[str] = "normal"
 
 class ExpedienteCreate(ExpedienteBase):
     pass
 
 class ExpedienteUpdate(BaseModel):
     titulo_protocolo: Optional[str] = None
+    tipo_tramite: Optional[str] = None
+    facultad: Optional[str] = None
+    prioridad: Optional[str] = None
     estado: Optional[str] = None
 
 class ExpedienteResponse(ExpedienteBase):
     id: int
     codigo_unico: Optional[str]
     investigador_id: int
+    tipo_tramite: Optional[str]
+    facultad: Optional[str]
+    prioridad: str
     estado: str
     fecha_envio: Optional[datetime]
     created_at: datetime = Field(validation_alias="fecha_creacion")
@@ -88,6 +97,7 @@ class DocumentoResponse(DocumentoBase):
     id: int
     validado: bool
     version: int
+    ruta_archivo: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -105,6 +115,9 @@ class EvaluacionUpdate(BaseModel):
     recommendation: Optional[str] = None
     observaciones: Optional[str] = None
     completa: Optional[bool] = None
+
+class EvaluacionAsignarRequest(BaseModel):
+    evaluador_id: int
 
 class EvaluacionResponse(EvaluacionBase):
     id: int

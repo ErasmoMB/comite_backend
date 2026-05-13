@@ -49,6 +49,9 @@ def get_expediente(expediente_id: int, db: Session = Depends(get_db), current_us
 def create_expediente(expediente: ExpedienteCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     new_exp = Expediente(
         titulo_protocolo=expediente.titulo_protocolo,
+        tipo_tramite=expediente.tipo_tramite,
+        facultad=expediente.facultad,
+        prioridad=expediente.prioridad or "normal",
         investigador_id=current_user.id,
         estado=EstadoExpedienteEnum.BORRADOR,
         codigo_unico=generar_codigo()
@@ -69,6 +72,12 @@ def update_expediente(expediente_id: int, exp_update: ExpedienteUpdate, db: Sess
         raise HTTPException(status_code=403, detail="No puedes modificar un expediente enviado")
     if exp_update.titulo_protocolo:
         exp.titulo_protocolo = exp_update.titulo_protocolo
+    if exp_update.tipo_tramite is not None:
+        exp.tipo_tramite = exp_update.tipo_tramite
+    if exp_update.facultad is not None:
+        exp.facultad = exp_update.facultad
+    if exp_update.prioridad is not None:
+        exp.prioridad = exp_update.prioridad
     if exp_update.estado:
         actualizar_estado(db, exp, exp_update.estado)
         registrar_bitacora(db, exp.id, f"Estado cambiado a {exp_update.estado}", None, current_user.id)
@@ -102,14 +111,41 @@ def get_historial(expediente_id: int, db: Session = Depends(get_db), current_use
     return historial
 
 @router.post("/{expediente_id}/documentos", response_model=DocumentoResponse)
-async def upload_documento(expediente_id: int, nombre_archivo: str, tipo_documento: str, es_obligatorio: bool = True, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def upload_documento(
+    expediente_id: int, 
+    file: UploadFile = File(...), 
+    tipo_documento: str = "documento",
+    es_obligatorio: bool = True,
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
     exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
     if not exp:
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
     if exp.estado not in [EstadoExpedienteEnum.BORRADOR, EstadoExpedienteEnum.SUBSANACION]:
         raise HTTPException(status_code=400, detail="No puedes agregar documentos en este estado")
-    doc = Documento(expediente_id=expediente_id, nombre_archivo=nombre_archivo, tipo_documento=tipo_documento, es_obligatorio=es_obligatorio)
+    
+    # Guardar archivo con nombre único
+    import os
+    from pathlib import Path
+    
+    upload_dir = Path("uploads") / str(expediente_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    file_path = upload_dir / file.filename
+    with open(file_path, "wb") as buffer:
+        buffer.write(await file.read())
+    
+    doc = Documento(
+        expediente_id=expediente_id, 
+        nombre_archivo=file.filename, 
+        tipo_documento=tipo_documento, 
+        es_obligatorio=es_obligatorio,
+        ruta_archivo=str(file_path)
+    )
     db.add(doc)
     db.commit()
     db.refresh(doc)
+    registrar_bitacora(db, expediente_id, "Documento subido", f"Archivo: {file.filename}", current_user.id)
+    db.commit()
     return doc

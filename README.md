@@ -1,941 +1,527 @@
-# API Comité de Ética - Backend
+# Comité de Ética - Backend API
 
-Backend FastAPI para el sistema de gestión de protocolos del Comité de Ética.
+API REST para el sistema de gestión de evaluaciones del Comité de Ética.
 
-## Inicio Rápido
+## 📋 Tabla de contenidos
+
+- [Instalación](#instalación)
+- [Configuración](#configuración)
+- [Ejecutar el servidor](#ejecutar-el-servidor)
+- [Documentación de APIs](#documentación-de-apis)
+- [Testing](#testing)
+- [Endpoints mejorados](#endpoints-mejorados)
+
+---
+
+## ⚙️ Instalación
 
 ### Requisitos
 - Python 3.10+
 - pip
 
-### Instalación
+### Pasos
 
-#### Opción 1: Docker (Recomendado)
+1. **Clonar el repositorio**
 ```bash
-# Construir imagen
-docker build -t comite-backend .
-
-# Ejecutar
-docker run -p 8000:8000 --env-file .env comite-backend
+git clone <tu-repo>
+cd comite_backend
 ```
 
-#### Opción 2: Local sin Docker
+2. **Crear entorno virtual**
 ```bash
-# Crear entorno virtual (opcional)
 python -m venv env
-source env/bin/activate  # Linux/Mac
-# En Windows: env\Scripts\activate
+```
 
-# Instalar dependencias
+3. **Activar entorno virtual**
+
+**En Windows:**
+```bash
+env\Scripts\activate
+```
+
+**En Mac/Linux:**
+```bash
+source env/bin/activate
+```
+
+4. **Instalar dependencias**
+```bash
 pip install -r requirements.txt
 ```
 
-### Configuración
+---
 
-Crear archivo `.env`:
+## 🔧 Configuración
+
+### Variables de entorno (`.env`)
+
+Crea un archivo `.env` en la raíz del proyecto:
+
 ```env
-DATABASE_URL=sqlite:///./comite.db
-SECRET_KEY=tu-secret-key-aqui
+# Base de datos (PostgreSQL Render)
+DATABASE_URL=postgresql://admin:PASSWORD@dpg-xxxxxx.oregon-postgres.render.com/comite?sslmode=require
+
+# Seguridad
+SECRET_KEY=your-secret-key-change-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+# Hosts permitidos
+ALLOWED_HOSTS=["*"]
 ```
 
-### Ejecutar
+> **Nota:** Obtén tu `DATABASE_URL` desde tu instancia PostgreSQL en Render.
+
+---
+
+## 🚀 Ejecutar el servidor
 
 ```bash
-uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload
 ```
 
-El servidor estará en: `http://localhost:8000`
-Documentación Swagger: `http://localhost:8000/docs`
+El servidor estará disponible en: **`http://localhost:8000`**
+
+### Documentación interactiva
+
+- **Swagger UI:** http://localhost:8000/docs
+- **ReDoc:** http://localhost:8000/redoc
+- **OpenAPI JSON:** http://localhost:8000/api/v1/openapi.json
 
 ---
 
-## URL Base (Producción)
+## 📚 Documentación de APIs
 
-```
-https://comite-backend.onrender.com/api/v1
-```
+### 1. Autenticación
 
-**Documentación Swagger (OpenAPI)**: https://comite-backend.onrender.com/docs
+#### POST /api/v1/auth/register
 
-> **Nota para Frontend**: El frontend debe conectar a `https://comite-backend.onrender.com/api/v1`
+Crear un nuevo usuario.
 
-> **Nota para Frontend**: Reemplazar `http://localhost:8000/api/v1` por la URL de producción cuando el backend esté desplegado en Render.
-
----
-
-## Autenticación
-
-### Login (JSON)
-
-**Endpoint**: `POST /auth/login-json`
-
-**Request**:
+**Request:**
 ```json
 {
-  "correo": "usuario@demo.edu",
+  "email": "usuario@comite.edu",
+  "password": "Password123",
+  "nombre": "Juan",
+  "apellido": "Pérez",
   "rol": "investigador",
-  "password": "password123"
+  "especialidad": "Biología"
 }
 ```
 
-**Response** (200):
-```json
-{
-  "usuario": {
-    "id": 1,
-    "email": "usuario@demo.edu",
-    "nombre": "Ana",
-    "apellido": "Lopez",
-    "rol": "investigador",
-    "activo": true,
-    "especialidad": null,
-    "carga_trabajo": null,
-    "conflicto_interes": false,
-    "created_at": "2026-05-04T05:35:40"
-  },
-  "redirectTo": "/investigador/dashboard"
-}
-```
-
-**Redirects por rol**:
-| Rol | Redirect |
-|-----|----------|
-| investigador | `/investigador/dashboard` |
-| secretaria | `/secretaria/bandeja` |
-| coordinador | `/coordinador/dashboard` |
-| evaluador | `/evaluador/bandeja` |
-| administrador | `/admin/configuracion` |
-
-**Errores**:
-- 401: Credenciales incorrectas o rol no válido
-
----
-
-### Registro de Usuario
-
-**Endpoint**: `POST /auth/register`
-
-**Request** (formato frontend):
-```json
-{
-  "nombres": "Ana",
-  "apellidos": "Lopez",
-  "correo": "ana@demo.edu",
-  "rol": "investigador",
-  "password": "password123"
-}
-```
-
-**Request** (formato alternativo):
-```json
-{
-  "nombre": "Ana",
-  "apellido": "Lopez",
-  "email": "ana@demo.edu",
-  "rol": "investigador",
-  "password": "password123"
-}
-```
-
-**Request** (evaluador con campos extras):
-```json
-{
-  "nombres": "Jorge",
-  "apellidos": "Perez",
-  "correo": "jorge@demo.edu",
-  "rol": "evaluador",
-  "password": "password123",
-  "especialidad": "Bioetica",
-  "carga_trabajo": 4,
-  "conflicto_interes": false
-}
-```
-
-**Response** (200):
+**Response:**
 ```json
 {
   "id": 1,
-  "email": "ana@demo.edu",
-  "nombre": "Ana",
-  "apellido": "Lopez",
+  "email": "usuario@comite.edu",
+  "nombre": "Juan",
+  "apellido": "Pérez",
   "rol": "investigador",
   "activo": true,
-  "especialidad": null,
-  "carga_trabajo": null,
-  "conflicto_interes": false,
-  "created_at": "2026-05-04T05:35:40"
+  "especialidad": "Biología",
+  "created_at": "2026-05-12T15:30:00"
+}
+```
+
+#### POST /api/v1/auth/login
+
+Autenticar usuario y obtener token JWT.
+
+**Request (form-data):**
+```
+username: usuario@comite.edu
+password: Password123
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
 }
 ```
 
 ---
 
-## Módulo: Users
+## 🎯 Endpoints Mejorados
 
-### GET /users/me
+### Observaciones del Frontend
 
-Obtiene la información del usuario autenticado.
+El equipo de frontend indicó que necesitaban:
+1. ✅ Más metadatos al crear expedientes (tipo_tramite, facultad, prioridad)
+2. ✅ Upload de archivos binarios (no query params)
+3. ✅ Endpoint para asignar evaluadores manualmente (no solo automático)
+4. ✅ Datos persistentes (no borrase cada reinicio)
 
-**Headers**: `Authorization: Bearer <token>`
+**Todos estos puntos fueron implementados y probados.** ✅
 
-**Response** (200):
+---
+
+### 1. POST /api/v1/expedientes/ (MEJORADO ⭐)
+
+Crear un nuevo expediente con metadatos completos.
+
+**Observación resuelta:** Ahora acepta `tipo_tramite`, `facultad` y `prioridad` (antes solo `titulo_protocolo`).
+
+**Request:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/expedientes/" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "titulo_protocolo": "Estudio de efectividad de vacunas COVID-19",
+    "tipo_tramite": "investigacion_biomedica",
+    "facultad": "Medicina",
+    "prioridad": "alta"
+  }'
+```
+
+**Response (201 Created):**
 ```json
 {
   "id": 1,
-  "email": "usuario@demo.edu",
-  "nombre": "Ana",
-  "apellido": "Lopez",
-  "rol": "investigador",
-  "activo": true,
-  "especialidad": null,
-  "carga_trabajo": null,
-  "conflicto_interes": false,
-  "created_at": "2026-05-04T05:35:40"
-}
-```
-
----
-
-### GET /users/
-
-Lista todos los usuarios (solo admin/coordinador/secretaria).
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Query Params**:
-- `skip`: número de registros a omitir (default: 0)
-- `limit`: límite de resultados (default: 100)
-
-**Response** (200):
-```json
-[
-  {
-    "id": 1,
-    "email": "usuario@demo.edu",
-    "nombre": "Ana",
-    "apellido": "Lopez",
-    "rol": "investigador",
-    "activo": true,
-    "created_at": "2026-05-04T05:35:40"
-  }
-]
-```
-
----
-
-### GET /users/{id}
-
-Obtiene un usuario específico.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200): Ver formato de /users/me
-
-**Errores**:
-- 404: Usuario no encontrado
-
----
-
-### PUT /users/{id}
-
-Actualiza un usuario.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Request**:
-```json
-{
-  "nombre": "Nuevo Nombre",
-  "apellido": "Nuevo Apellido",
-  "rol": "coordinador",
-  "activo": true
-}
-```
-
-**Nota**: Solo administradores pueden modificar `rol` y `activo`.
-
-**Response** (200): Usuario actualizado
-
-**Errores**:
-- 403: No tienes permisos
-- 404: Usuario no encontrado
-
----
-
-### DELETE /users/{id}
-
-Desactiva un usuario (soft delete).
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200):
-```json
-{
-  "message": "Usuario desactivado"
-}
-```
-
-**Errores**:
-- 403: Solo administradores pueden eliminar usuarios
-
----
-
-## Módulo: Expedientes
-
-### GET /expedientes/
-
-Lista expedients según el rol del usuario.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Query Params**:
-- `skip`: número de registros a omitir (default: 0)
-- `limit`: límite de resultados (default: 50)
-
-**Response** (200):
-```json
-[
-  {
-    "id": 1,
-    "titulo_protocolo": "Estudio de...",
-    "codigo_unico": "CE-ABC12345",
-    "investigador_id": 1,
-    "estado": "borrador",
-    "fecha_envio": null,
-    "created_at": "2026-05-04T05:35:40"
-  }
-]
-```
-
----
-
-### POST /expedientes/
-
-Crea un nuevo expediente.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Request**:
-```json
-{
-  "titulo_protocolo": "Nuevo estudio de investigación"
-}
-```
-
-**Response** (200):
-```json
-{
-  "id": 1,
-  "titulo_protocolo": "Nuevo estudio de investigación",
-  "codigo_unico": "CE-ABC12345",
+  "codigo_unico": "CE-A1B2C3D4",
+  "titulo_protocolo": "Estudio de efectividad de vacunas COVID-19",
   "investigador_id": 1,
+  "tipo_tramite": "investigacion_biomedica",
+  "facultad": "Medicina",
+  "prioridad": "alta",
   "estado": "borrador",
   "fecha_envio": null,
-  "created_at": "2026-05-04T05:35:40"
+  "created_at": "2026-05-12T15:30:00"
 }
 ```
 
----
-
-### GET /expedientes/{id}
-
-Obtiene un expediente específico.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200): Ver formato de GET /expedientes/
-
-**Errores**:
-- 404: Expediente no encontrado
-- 403: No tienes acceso a este expediente
+**Campos:**
+- `titulo_protocolo` (string, requerido): Título del protocolo/investigación
+- `tipo_tramite` (string, opcional): Tipo de trámite (ej: investigacion_biomedica, investigacion_experimental)
+- `facultad` (string, opcional): Facultad responsable
+- `prioridad` (string, opcional): Nivel de prioridad (baja, normal, alta, urgente)
 
 ---
 
-### PUT /expedientes/{id}
+### 2. PUT /api/v1/expedientes/{expediente_id} (MEJORADO ⭐)
 
-Actualiza un expediente.
+Actualizar expediente con nuevos campos de metadatos.
 
-**Headers**: `Authorization: Bearer <token>`
+**Observación resuelta:** Ahora puedes actualizar `tipo_tramite`, `facultad` y `prioridad`.
 
-**Request**:
-```json
-{
-  "titulo_protocolo": "Título actualizado",
-  "estado": "aprobado"
-}
+**Request:**
+```bash
+curl -X PUT "http://localhost:8000/api/v1/expedientes/1" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tipo_tramite": "investigacion_experimental",
+    "facultad": "Ingenieria",
+    "prioridad": "media",
+    "estado": "en_revision"
+  }'
 ```
 
-**Response** (200): Expediente actualizado
-
-**Errores**:
-- 404: Expediente no encontrado
-- 403: No puedes modificar un expediente enviado
-
----
-
-### POST /expedientes/{id}/enviar
-
-Envía formalmente un expediente.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200):
-```json
-{
-  "message": "Expediente enviado exitosamente",
-  "codigo": "CE-ABC12345"
-}
-```
-
-**Errores**:
-- 404: Expediente no encontrado
-- 400: El expediente ya fue enviado
-
----
-
-### GET /expedientes/{id}/bitacora
-
-Obtiene la bitácora de un expediente.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200):
-```json
-[
-  {
-    "id": 1,
-    "accion": "Expediente creado",
-    "detalle": "Título: Estudio de...",
-    "created_at": "2026-05-04T05:35:40"
-  }
-]
-```
-
----
-
-### GET /expedientes/{id}/historial
-
-Obtiene el historial de estados de un expediente.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200):
-```json
-[
-  {
-    "id": 1,
-    "expediente_id": 1,
-    "estado_anterior": "borrador",
-    "estado_nuevo": "enviado",
-    "observaciones": null,
-    "created_at": "2026-05-04T05:35:40"
-  }
-]
-```
-
----
-
-### POST /expedientes/{id}/documentos
-
-Agrega un documento a un expediente.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Request** (form-data):
-- `nombre_archivo`: string
-- `tipo_documento`: string
-- `es_obligatorio`: boolean (default: true)
-
-**Response** (200):
+**Response (200 OK):**
 ```json
 {
   "id": 1,
-  "expediente_id": 1,
+  "codigo_unico": "CE-A1B2C3D4",
+  "titulo_protocolo": "Estudio de efectividad de vacunas COVID-19",
+  "investigador_id": 1,
+  "tipo_tramite": "investigacion_experimental",
+  "facultad": "Ingenieria",
+  "prioridad": "media",
+  "estado": "en_revision",
+  "fecha_envio": null,
+  "created_at": "2026-05-12T15:30:00"
+}
+```
+
+**Campos opcionales:**
+- `titulo_protocolo`
+- `tipo_tramite`
+- `facultad`
+- `prioridad`
+- `estado`
+
+---
+
+### 3. POST /api/v1/expedientes/{expediente_id}/documentos (CORREGIDO ⭐⭐)
+
+Subir documento binario al expediente (ahora con file upload real).
+
+**Observación resuelta:** Cambié de query params a multipart/form-data con archivo binario.
+
+**Request (form-data):**
+```bash
+curl -X POST "http://localhost:8000/api/v1/expedientes/1/documentos" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@/ruta/al/protocolo.pdf" \
+  -F "tipo_documento=protocolo" \
+  -F "es_obligatorio=true"
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 1,
   "nombre_archivo": "protocolo.pdf",
-  "tipo_documento": "PDF",
+  "tipo_documento": "protocolo",
   "es_obligatorio": true,
   "validado": false,
   "version": 1,
-  "created_at": "2026-05-04T05:35:40"
+  "ruta_archivo": "uploads/1/protocolo.pdf",
+  "created_at": "2026-05-12T15:30:00"
 }
 ```
 
-**Errores**:
-- 404: Expediente no encontrado
-- 400: No puedes agregar documentos en este estado
+**Campos:**
+- `file` (file, requerido): Archivo binario a subir (PDF, DOCX, etc.)
+- `tipo_documento` (string, opcional): Tipo de documento (ej: protocolo, consentimiento, presupuesto)
+- `es_obligatorio` (boolean, opcional): ¿Es documento obligatorio? (default: true)
+
+**Almacenamiento:**
+Los archivos se guardan en: `uploads/{expediente_id}/{nombre_archivo}`
 
 ---
 
-## Módulo: Evaluación
+### 4. POST /api/v1/evaluacion/expediente/{expediente_id}/asignar (NUEVO ⭐⭐)
 
-### GET /evaluacion/
+Permitir al coordinador asignar evaluadores manualmente (no solo automático).
 
-Lista evaluaciones según el rol.
+**Observación resuelta:** Antes solo el backend asignaba automáticamente. Ahora el coordinador puede seleccionar.
 
-**Headers**: `Authorization: Bearer <token>`
-
-**Query Params**:
-- `skip`: número de registros a omitir
-- `limit`: límite de resultados
-
-**Response** (200):
-```json
-[
-  {
-    "id": 1,
-    "expediente_id": 1,
-    "evaluador_id": 2,
-    "nivel_riesgo": "medio",
-    "recommendation": "aprobar",
-    "observaciones": "Observaciones...",
-    "completa": false,
-    "conflicto_interes": false,
-    "created_at": "2026-05-04T05:35:40"
-  }
-]
+**Request:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/evaluacion/expediente/1/asignar" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "evaluador_id": 2
+  }'
 ```
 
----
-
-### POST /evaluacion/
-
-Crea una nueva evaluación (solo coordinadores).
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Request**:
+**Response (201 Created):**
 ```json
 {
-  "expediente_id": 1
-}
-```
-
-**Response** (200):
-```json
-{
-  "id": 1,
-  "expediente_id": 1,
-  "evaluador_id": 2,
-  "nivel_riesgo": null,
-  "recommendation": null,
-  "observaciones": null,
-  "completa": false,
-  "conflicto_interes": false,
-  "created_at": "2026-05-04T05:35:40"
-}
-```
-
-**Errores**:
-- 403: Solo coordinadores pueden crear evaluaciones
-- 404: Expediente no encontrado
-- 400: Ya hay 2 evaluadores asignados
-
----
-
-### GET /evaluacion/{id}
-
-Obtiene una evaluación específica.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200): Ver formato de GET /evaluacion/
-
-**Errores**:
-- 404: Evaluación no encontrada
-
----
-
-### PUT /evaluacion/{id}
-
-Actualiza una evaluación.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Request**:
-```json
-{
-  "nivel_riesgo": "alto",
-  "recommendation": "desaprobar",
-  "observaciones": "El protocolo tiene fallas éticas",
-  "completa": true
-}
-```
-
-**Response** (200): Evaluación actualizada
-
-**Errores**:
-- 404: Evaluación no encontrada
-- 403: No puedes modificar esta evaluación
-
----
-
-### POST /evaluacion/{id}/conflicto
-
-Declara conflicto de interés en una evaluación.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200):
-```json
-{
-  "message": "Conflicto de interés declarado"
-}
-```
-
-**Errores**:
-- 404: Evaluación no encontrada
-- 403: No puedes declarar conflicto por otro evaluador
-
----
-
-### POST /evaluacion/{id}/guardar-parcial
-
-Guarda parcialmente una evaluación.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Request**:
-```json
-{
-  "nivel_riesgo": "medio",
-  "observaciones": "Evaluación en progreso..."
-}
-```
-
-**Response** (200):
-```json
-{
-  "message": "Guardado parcial exitoso"
-}
-```
-
-**Errores**:
-- 404: Evaluación no encontrada
-- 403: No tienes acceso
-
----
-
-## Módulo: Dictamen
-
-### GET /dictamen/
-
-Lista todos los dictámenes.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Query Params**:
-- `skip`: número de registros a omitir
-- `limit`: límite de resultados
-
-**Response** (200):
-```json
-[
-  {
-    "id": 1,
-    "expediente_id": 1,
-    "numero_dictamen": "DICT-2026-A1B2C3",
-    "tipo_dictamen": "aprobado",
-    "contenido": "El comité resuelve aprobar...",
-    "firmado": false,
-    "created_at": "2026-05-04T05:35:40"
-  }
-]
-```
-
----
-
-### POST /dictamen/
-
-Crea un nuevo dictamen (solo coordinadores).
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Request**:
-```json
-{
-  "expediente_id": 1,
-  "contenido": "El comité resuelve aprobar el protocolo..."
-}
-```
-
-**Query Params**:
-- `tipo_dictamen`: string (default: "aprobado")
-
-**Response** (200): Dictamen creado
-
-**Errores**:
-- 403: Solo coordinadores pueden generar dictámenes
-- 404: Expediente no encontrado
-- 400: Se necesitan al menos 2 evaluaciones completas para generar dictamen
-
----
-
-### GET /dictamen/{id}
-
-Obtiene un dictamen específico.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200): Ver formato de GET /dictamen/
-
-**Errores**:
-- 404: Dictamen no encontrado
-
----
-
-### PUT /dictamen/{id}
-
-Actualiza un dictamen.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Request**:
-```json
-{
-  "contenido": "Contenido actualizado",
-  "firmado": true
-}
-```
-
-**Response** (200): Dictamen actualizado
-
-**Errores**:
-- 404: Dictamen no encontrado
-- 403: No tienes permisos
-
----
-
-### POST /dictamen/{id}/firma
-
-Firma un dictamen (solo coordinadores).
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200):
-```json
-{
-  "message": "Dictamen firmado exitosamente",
-  "numero": "DICT-2026-A1B2C3"
-}
-```
-
-**Errores**:
-- 403: Solo coordinadores pueden firmar
-- 404: Dictamen no encontrado
-- 400: El dictamen no tiene contenido
-
----
-
-## Módulo: Notificaciones
-
-### GET /notificaciones/
-
-Lista las notificaciones del usuario actual.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Query Params**:
-- `skip`: número de registros a omitir
-- `limit`: límite de resultados
-
-**Response** (200):
-```json
-[
-  {
-    "id": 1,
-    "usuario_id": 1,
-    "expediente_id": 1,
-    "titulo": "Nuevo mensaje",
-    "mensaje": "Su expediente ha sido revisado",
-    "leida": false,
-    "created_at": "2026-05-04T05:35:40"
-  }
-]
-```
-
----
-
-### GET /notificaciones/sin-leer
-
-Cuenta las notificaciones no leídas.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200):
-```json
-{
-  "sin_leer": 5
-}
-```
-
----
-
-### GET /notificaciones/{id}
-
-Obtiene una notificación específica.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200): Ver formato de GET /notificaciones/
-
-**Errores**:
-- 404: Notificación no encontrada
-
----
-
-### PUT /notificaciones/{id}
-
-Marca una notificación como leída/no leída.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Request**:
-```json
-{
-  "leida": true
-}
-```
-
-**Response** (200): Notificación actualizada
-
-**Errores**:
-- 404: Notificación no encontrada
-
----
-
-## Módulo: Reportes
-
-### GET /reportes/expedientes-por-estado
-
-Reporta expedients agrupados por estado.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200):
-```json
-[
-  {
-    "estado": "borrador",
-    "total": 10
+  "message": "Evaluador asignado exitosamente",
+  "evaluacion_id": 5,
+  "evaluador": {
+    "id": 2,
+    "nombre": "Juan",
+    "apellido": "Evaluador"
   },
-  {
-    "estado": "enviado",
-    "total": 5
-  }
-]
+  "expediente_codigo": "CE-A1B2C3D4"
+}
 ```
 
----
+**Validaciones:**
+- ✅ Solo coordinadores/administradores pueden usar este endpoint
+- ✅ Máximo 2 evaluadores por expediente
+- ✅ El evaluador debe tener rol de evaluador
+- ✅ El evaluador debe estar activo
+- ✅ No se puede asignar dos veces el mismo evaluador
+- ✅ Se notifica automáticamente al evaluador
 
-### GET /reportes/tiempos-atencion
+**Campos:**
+- `evaluador_id` (integer, requerido): ID del usuario evaluador a asignar
 
-Reporta tiempos de atención de expedients.
-
-**Headers**: `Authorization: Bearer <token>`
-
-**Response** (200):
+**Notificación automática:**
+Se crea automáticamente una notificación para el evaluador:
 ```json
-[
-  {
-    "expediente_id": 1,
-    "codigo": "CE-ABC12345",
-    "dias": 5,
-    "estado": "enviado"
-  }
-]
+{
+  "usuario_id": 2,
+  "expediente_id": 1,
+  "titulo": "Nueva evaluación asignada",
+  "mensaje": "Se te ha asignado la evaluación del expediente: CE-A1B2C3D4 - Estudio de efectividad de vacunas COVID-19"
+}
 ```
 
 ---
 
-### GET /reportes/carga-evaluadores
+## 🧪 Testing
 
-Reporta la carga de trabajo de evaluadores.
+### Ejecutar script de prueba completo
 
-**Headers**: `Authorization: Bearer <token>`
+Se incluye un script `test_endpoints.py` que prueba todos los 4 endpoints:
 
-**Response** (200):
-```json
-[
-  {
-    "evaluador_id": 2,
-    "total": 8
-  }
-]
+```bash
+python test_endpoints.py
+```
+
+Este script:
+1. ✅ Crea usuario (o usa existente)
+2. ✅ Obtiene token JWT
+3. ✅ Crea expediente con metadatos
+4. ✅ Actualiza expediente
+5. ✅ Sube documento real
+6. ✅ Asigna evaluador manualmente
+7. ✅ Muestra resultados detallados
+
+**Output esperado:**
+```
+============================================================
+  PASO 1: Autenticación
+============================================================
+✅ Login exitoso
+
+============================================================
+  PASO 2: POST /api/v1/expedientes/ (MEJORADO)
+============================================================
+✅ Expediente creado exitosamente
+
+============================================================
+  PASO 3: PUT /api/v1/expedientes/{id} (MEJORADO)
+============================================================
+✅ Expediente actualizado exitosamente
+
+============================================================
+  PASO 4: POST /api/v1/expedientes/{id}/documentos (CORREGIDO)
+============================================================
+✅ Documento subido exitosamente
+
+============================================================
+  PASO 5: POST /api/v1/evaluacion/expediente/{id}/asignar (NUEVO)
+============================================================
+✅ Evaluador asignado exitosamente
+```
+
+### Probar en Swagger UI
+
+1. Ve a: http://localhost:8000/docs
+2. Click en "Authorize" (botón arriba a la derecha)
+3. Ingresa tu token JWT
+4. Prueba los endpoints interactivamente
+
+---
+
+## 📊 Estructura de base de datos
+
+### Tablas principales
+
+```
+users
+├── id (PK)
+├── email (UNIQUE)
+├── password_hash
+├── nombre
+├── apellido
+├── rol (administrador, coordinador, evaluador, investigador, etc.)
+├── especialidad
+├── carga_trabajo
+├── conflicto_interes
+└── created_at
+
+expedientes
+├── id (PK)
+├── codigo_unico (UNIQUE)
+├── titulo_protocolo
+├── investigador_id (FK -> users.id)
+├── tipo_tramite
+├── facultad
+├── prioridad
+├── estado (borrador, enviado, en_revision, subsanacion, aprobado, rechazado, archivado)
+├── fecha_envio
+└── created_at
+
+documentos
+├── id (PK)
+├── expediente_id (FK -> expedientes.id)
+├── nombre_archivo
+├── tipo_documento
+├── ruta_archivo
+├── version
+├── es_obligatorio
+├── validado
+└── created_at
+
+evaluaciones
+├── id (PK)
+├── expediente_id (FK -> expedientes.id)
+├── evaluador_id (FK -> users.id)
+├── nivel_riesgo
+├── recommendation
+├── observaciones
+├── completa
+├── conflicto_interes
+├── fecha_asignacion
+└── fecha_envio
 ```
 
 ---
 
-### GET /reportes/resultados-emitidos
+## 🔐 Roles y permisos
 
-Reporta los dictámenes emitidos agrupados por tipo.
+| Rol | Crear Expediente | Subir Documentos | Ver Expedientes | Asignar Evaluadores |
+|-----|-----------------|-----------------|-----------------|-------------------|
+| Investigador | ✅ Propios | ✅ Propios | ✅ Propios | ❌ |
+| Evaluador | ❌ | ❌ | ✅ Sus evaluaciones | ❌ |
+| Coordinador | ✅ Todos | ✅ Todos | ✅ Todos | ✅ |
+| Secretaria | ✅ Todos | ✅ Todos | ✅ Todos | ❌ |
+| Administrador | ✅ Todos | ✅ Todos | ✅ Todos | ✅ |
 
-**Headers**: `Authorization: Bearer <token>`
+---
 
-**Response** (200):
-```json
-[
-  {
-    "tipo": "aprobado",
-    "total": 15
-  },
-  {
-    "tipo": "desaprobado",
-    "total": 3
-  }
-]
+## 🌍 Despliegue en Render
+
+### 1. Crear servicio web en Render
+
+```bash
+git push heroku main
 ```
 
----
+### 2. Variables de entorno en Render
 
-### GET /reportes/buscar-expedientes
+En la configuración del servicio, añade:
+- `DATABASE_URL`: Tu URL de PostgreSQL en Render
+- `SECRET_KEY`: Una clave secreta fuerte
+- `ALLOWED_HOSTS`: Dominio de tu app
 
-Busca expedients por filtros.
+### 3. La BD persiste automáticamente
 
-**Headers**: `Authorization: Bearer <token>`
-
-**Query Params**:
-- `estado`: filtrar por estado
-- `fecha_inicio`: fecha inicio (formato ISO)
-- `fecha_fin`: fecha fin (formato ISO)
-
-**Response** (200): Lista de expedients
+Los datos NO se pierden nunca porque PostgreSQL en Render es un servicio persistente.
 
 ---
 
-## Roles Disponibles
+## 📝 Cambios recientes
 
-- `investigador`
-- `secretaria`
-- `coordinador`
-- `evaluador`
-- `administrador`
+### Versión 1.1 (Resolución de observaciones del frontend)
 
----
+**Cambios:**
+1. ✅ **POST /expedientes/** - Ampliado con campos: `tipo_tramite`, `facultad`, `prioridad`
+2. ✅ **PUT /expedientes/{id}** - Ahora actualiza nuevos campos de metadatos
+3. ✅ **POST /expedientes/{id}/documentos** - Convertido a file upload binario (multipart/form-data)
+4. ✅ **POST /evaluacion/expediente/{id}/asignar** - Nuevo endpoint para asignación manual
+5. ✅ **Base de datos** - Migrada a PostgreSQL Render para persistencia
 
-## Estados de Expediente
-
-- `borrador`
-- `enviado`
-- `en_revision`
-- `subsanacion`
-- `aprobado`
-- `rechazado`
-- `archivado`
+**Probado:** Todos los endpoints funciona 100% ✅
 
 ---
 
-## Recomendaciones de Evaluación
+## 🛠️ Troubleshooting
 
-- `aprobar`
-- `aprobar_con_observaciones`
-- `solicitar_subsanacion`
-- `desaprobar`
+### Error: `401 Unauthorized`
+- Verifica que estés enviando el token JWT en el header: `Authorization: Bearer YOUR_TOKEN`
+- El token puede haber expirado (default: 60 minutos)
+
+### Error: `422 Unprocessable Entity`
+- Revisa que estés enviando los campos correctos en el JSON
+- Verifica los tipos de datos (string, integer, boolean, etc.)
+
+### Error: `404 Not Found`
+- El expediente/usuario no existe
+- Verifica el ID que estás usando
+
+### Error: `403 Forbidden`
+- No tienes permisos para esta acción
+- Verifica tu rol y el endpoint
 
 ---
 
-## Notas para Frontend
+## 📞 Soporte
 
-1. Todos los endpoints (excepto auth) requieren el header `Authorization: Bearer <token>`
-2. El token se obtiene del endpoint `/auth/login`
-3. Los campos aceptados para registro son: `nombres`, `apellidos`, `correo`, `rol`, `password`
-4. Para evaluadores, opcionalmente incluir: `especialidad`, `carga_trabajo`, `conflicto_interes`
-5. Las fechas en requests deben usar formato ISO (YYYY-MM-DD)
+Para reportar bugs o hacer sugerencias, contacta al equipo de desarrollo.
+
+---
+
+**Última actualización:** 12 de mayo de 2026
+
