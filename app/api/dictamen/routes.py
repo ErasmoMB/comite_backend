@@ -67,7 +67,7 @@ def update_dictamen(dictamen_id: int, dict_update: DictamenUpdate, db: Session =
     db.refresh(dictamen)
     return dictamen
 
-@router.post("/{dictamen_id}/firmar")
+@router.post("/{dictamen_id}/firmar", response_model=DictamenResponse)
 def firmar_dictamen(dictamen_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.rol not in [RolEnum.COORDINADOR, RolEnum.ADMINISTRADOR]:
         raise HTTPException(status_code=403, detail="Solo coordinadores pueden firmar")
@@ -77,5 +77,8 @@ def firmar_dictamen(dictamen_id: int, db: Session = Depends(get_db), current_use
     if not dictamen.contenido:
         raise HTTPException(status_code=400, detail="El dictamen no tiene contenido")
     dictamen.firmado = True
+    dictamen.fecha_firma = datetime.utcnow()
     db.commit()
+    db.refresh(dictamen)
+    return dictamen
     return {"message": "Dictamen firmado exitosamente", "numero": dictamen.numero_dictamen}

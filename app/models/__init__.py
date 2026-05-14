@@ -109,7 +109,9 @@ class Dictamen(Base):
     tipo_dictamen = Column(String(50))
     contenido = Column(Text)
     fecha_emision = Column(DateTime, nullable=True)
+    fecha_firma = Column(DateTime, nullable=True)
     firmado = Column(Boolean, default=False)
+    archivo_url = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     expediente = relationship("Expediente", back_populates="dictamines")

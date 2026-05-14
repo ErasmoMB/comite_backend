@@ -6,7 +6,7 @@ import uuid
 
 from app.db.database import get_db
 from app.models import User, RolEnum, EstadoExpedienteEnum, Expediente, Documento, Bitacora, HistorialExpediente
-from app.schemas import ExpedienteCreate, ExpedienteResponse, ExpedienteUpdate, DocumentoResponse
+from app.schemas import ExpedienteCreate, ExpedienteResponse, ExpedienteUpdate, DocumentoResponse, SubsanacionResponse
 from app.api.auth.routes import get_current_user
 
 router = APIRouter()
@@ -119,6 +119,39 @@ async def upload_documento(
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
+    # Validaciones
+    TIPOS_PERMITIDOS = {"application/pdf", "application/msword", 
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "application/vnd.ms-excel",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "text/plain"}
+    EXTENSIONES_PERMITIDAS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt"}
+    TAMAÑO_MAXIMO = 10 * 1024 * 1024  # 10 MB
+    
+    # Validar MIME type
+    if file.content_type not in TIPOS_PERMITIDOS:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Tipo de archivo no permitido. Permitidos: PDF, DOC, DOCX, XLS, XLSX, TXT"
+        )
+    
+    # Validar extensión
+    from pathlib import Path as PathlibPath
+    file_ext = PathlibPath(file.filename).suffix.lower()
+    if file_ext not in EXTENSIONES_PERMITIDAS:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Extensión no permitida: {file_ext}. Permitidas: {', '.join(EXTENSIONES_PERMITIDAS)}"
+        )
+    
+    # Validar tamaño
+    contenido = await file.read()
+    if len(contenido) > TAMAÑO_MAXIMO:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Archivo muy grande. Máximo permitido: 10 MB, tamaño del archivo: {len(contenido) / (1024*1024):.2f} MB"
+        )
+    
     exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
     if not exp:
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
@@ -128,13 +161,19 @@ async def upload_documento(
     # Guardar archivo con nombre único
     import os
     from pathlib import Path
+    import uuid
     
     upload_dir = Path("uploads") / str(expediente_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
     
-    file_path = upload_dir / file.filename
+    # Generar nombre único para evitar conflictos
+    nombre_base = PathlibPath(file.filename).stem
+    extension = PathlibPath(file.filename).suffix
+    nombre_unico = f"{nombre_base}_{uuid.uuid4().hex[:8]}{extension}"
+    
+    file_path = upload_dir / nombre_unico
     with open(file_path, "wb") as buffer:
-        buffer.write(await file.read())
+        buffer.write(contenido)
     
     doc = Documento(
         expediente_id=expediente_id, 
@@ -146,6 +185,51 @@ async def upload_documento(
     db.add(doc)
     db.commit()
     db.refresh(doc)
-    registrar_bitacora(db, expediente_id, "Documento subido", f"Archivo: {file.filename}", current_user.id)
+    registrar_bitacora(db, expediente_id, "Documento subido", 
+                      f"Archivo: {file.filename} (MIME: {file.content_type}, Tamaño: {len(contenido)} bytes)", 
+                      current_user.id)
     db.commit()
     return doc
+
+
+@router.post("/{expediente_id}/subsanacion", response_model=SubsanacionResponse)
+async def submit_subsanacion(
+    expediente_id: int,
+    observaciones: str = "",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Registra la respuesta de subsanación del investigador.
+    El investigador responde a las observaciones de evaluadores.
+    """
+    exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
+    if not exp:
+        raise HTTPException(status_code=404, detail="Expediente no encontrado")
+    
+    if exp.estado != EstadoExpedienteEnum.SUBSANACION:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"El expediente debe estar en estado SUBSANACION. Estado actual: {exp.estado}"
+        )
+    
+    # Registrar subsanación en bitácora
+    registrar_bitacora(
+        db, 
+        expediente_id, 
+        "Subsanación respondida", 
+        f"Observaciones: {observaciones[:200]}...",
+        current_user.id
+    )
+    
+    # No cambiar estado aquí - solo registrar respuesta
+    # El estado cambiará cuando coordinador decida re-evaluar
+    
+    db.commit()
+    
+    return SubsanacionResponse(
+        mensaje="Subsanación registrada correctamente. Pendiente de revisión coordinada.",
+        expediente_id=expediente_id,
+        estado=exp.estado,
+        fecha_subsanacion=datetime.utcnow()
+    )

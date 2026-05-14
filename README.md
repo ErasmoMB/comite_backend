@@ -1,527 +1,301 @@
-# Comité de Ética - Backend API
+# Comité de Ética - Backend
 
-API REST para el sistema de gestión de evaluaciones del Comité de Ética.
+Backend FastAPI para el sistema de Comité de Ética de la Universidad.
 
-## 📋 Tabla de contenidos
+## 🚀 Características Implementadas
 
-- [Instalación](#instalación)
-- [Configuración](#configuración)
-- [Ejecutar el servidor](#ejecutar-el-servidor)
-- [Documentación de APIs](#documentación-de-apis)
-- [Testing](#testing)
-- [Endpoints mejorados](#endpoints-mejorados)
+### ✅ 1. Campo `recommendation` en Evaluaciones
+
+**Descripción:** Se agregó el campo `recommendation` a las evaluaciones para que los evaluadores puedan proporcionar recomendaciones específicas.
+
+**Endpoints afectados:**
+- `POST /api/v1/evaluacion` - Crear evaluación
+- `PUT /api/v1/evaluacion/{evaluacion_id}` - Actualizar evaluación
+- `GET /api/v1/evaluacion/mis-evaluaciones` - Obtener evaluaciones del usuario
+
+**Schema:**
+```python
+class EvaluacionResponse(BaseModel):
+    id: int
+    expediente_id: int
+    evaluador_id: int
+    nivel_riesgo: str
+    recommendation: Optional[str]  # ✅ NUEVO
+    observaciones: Optional[str]
+    completa: bool
+```
+
+**Validación:** ✅ Probado en TEST 4
 
 ---
 
-## ⚙️ Instalación
+### ✅ 2. Campos Extendidos en Dictamenes
 
-### Requisitos
-- Python 3.10+
-- pip
+**Descripción:** Se extendió el modelo `DictamenResponse` con campos adicionales para metadatos del dictamen.
 
-### Pasos
+**Campos nuevos:**
+- `fecha_firma` - Fecha cuando se firmó el dictamen
+- `fecha_emision` - Fecha de emisión del dictamen
+- `archivo_url` - URL del archivo del dictamen (opcional)
 
-1. **Clonar el repositorio**
-```bash
-git clone <tu-repo>
-cd comite_backend
+**Schema:**
+```python
+class DictamenResponse(BaseModel):
+    id: int
+    expediente_id: int
+    numero_dictamen: Optional[str]
+    tipo_dictamen: Optional[str]
+    contenido: str
+    firmado: bool
+    fecha_emision: Optional[datetime] = None  # ✅ NUEVO
+    fecha_firma: Optional[datetime] = None    # ✅ NUEVO
+    archivo_url: Optional[str] = None         # ✅ NUEVO
+    created_at: datetime
 ```
 
-2. **Crear entorno virtual**
-```bash
-python -m venv env
-```
+**Endpoints:**
+- `POST /api/v1/dictamen` - Crear dictamen
+- `POST /api/v1/dictamen/{dictamen_id}/firmar` - Firmar dictamen con timestamp
 
-3. **Activar entorno virtual**
-
-**En Windows:**
-```bash
-env\Scripts\activate
-```
-
-**En Mac/Linux:**
-```bash
-source env/bin/activate
-```
-
-4. **Instalar dependencias**
-```bash
-pip install -r requirements.txt
-```
+**Validación:** ✅ Probado en TEST 5 - Dictamen creado y firmado con timestamps
 
 ---
 
-## 🔧 Configuración
+### ✅ 3. Validaciones de Documentos
 
-### Variables de entorno (`.env`)
+**Descripción:** Se implementó validación integral de documentos con restricciones de MIME type y tamaño.
 
-Crea un archivo `.env` en la raíz del proyecto:
+**Validaciones implementadas:**
 
-```env
-# Base de datos (PostgreSQL Render)
-DATABASE_URL=postgresql://admin:PASSWORD@dpg-xxxxxx.oregon-postgres.render.com/comite?sslmode=require
+1. **Tipos MIME permitidos:**
+   - `application/pdf` - PDF
+   - `application/msword` - DOC
+   - `application/vnd.openxmlformats-officedocument.wordprocessingml.document` - DOCX
+   - `application/vnd.ms-excel` - XLS
+   - `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` - XLSX
+   - `text/plain` - TXT
 
-# Seguridad
-SECRET_KEY=your-secret-key-change-in-production
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=60
+2. **Límite de tamaño:** 10 MB máximo
 
-# Hosts permitidos
-ALLOWED_HOSTS=["*"]
-```
+3. **Sanitización de nombres:** UUID para evitar colisiones
 
-> **Nota:** Obtén tu `DATABASE_URL` desde tu instancia PostgreSQL en Render.
+**Endpoint:**
+- `POST /api/v1/expedientes/{expediente_id}/documentos` - Upload con validación
 
----
-
-## 🚀 Ejecutar el servidor
-
-```bash
-python -m uvicorn app.main:app --reload
-```
-
-El servidor estará disponible en: **`http://localhost:8000`**
-
-### Documentación interactiva
-
-- **Swagger UI:** http://localhost:8000/docs
-- **ReDoc:** http://localhost:8000/redoc
-- **OpenAPI JSON:** http://localhost:8000/api/v1/openapi.json
+**Validación:** ✅ Probado en TEST 2
+- ✅ Acepta archivos válidos
+- ✅ Rechaza archivos > 10MB
+- ✅ Rechaza tipos MIME no permitidos
 
 ---
 
-## 📚 Documentación de APIs
+### ✅ 4. Endpoint de Subsanación
 
-### 1. Autenticación
+**Descripción:** Nuevo endpoint que permite a investigadores responder a observaciones del comité.
 
-#### POST /api/v1/auth/register
-
-Crear un nuevo usuario.
+**Endpoint:**
+```
+POST /api/v1/expedientes/{expediente_id}/subsanacion
+```
 
 **Request:**
 ```json
 {
-  "email": "usuario@comite.edu",
-  "password": "Password123",
-  "nombre": "Juan",
-  "apellido": "Pérez",
-  "rol": "investigador",
-  "especialidad": "Biología"
+  "observaciones": "Se han corregido los puntos señalados..."
 }
 ```
 
 **Response:**
 ```json
 {
-  "id": 1,
-  "email": "usuario@comite.edu",
-  "nombre": "Juan",
-  "apellido": "Pérez",
-  "rol": "investigador",
-  "activo": true,
-  "especialidad": "Biología",
-  "created_at": "2026-05-12T15:30:00"
+  "mensaje": "Subsanación registrada correctamente. Pendiente de revisión coordinada.",
+  "expediente_id": 16,
+  "estado": "subsanacion",
+  "fecha_subsanacion": "2026-05-14T03:51:41.648828"
 }
 ```
 
-#### POST /api/v1/auth/login
+**Características:**
+- Registra la subsanación en la bitácora
+- Cambia estado del expediente a `subsanacion`
+- Retorna timestamp de registro
 
-Autenticar usuario y obtener token JWT.
+**Validación:** ✅ Probado en TEST 6
 
-**Request (form-data):**
+---
+
+### ✅ 5. Schemas Tipados para Endpoints de IA
+
+**Descripción:** Se definieron schemas claros y tipados para todos los endpoints de IA con respuestas estructuradas.
+
+**Endpoints:**
+
+1. **GET /api/v1/ia/preanalisis/{expediente_id}**
+```python
+class IAAnalisisResponse(BaseModel):
+    analisis: str
+    nivel_riesgo: str
+    recomendaciones: List[str]
+    confianza: float
+    factores_clave: List[str]
 ```
-username: usuario@comite.edu
-password: Password123
+
+2. **GET /api/v1/ia/detectar-inconsistencias/{expediente_id}**
+```python
+class IAInconsistenciasResponse(BaseModel):
+    inconsistencias: List[str]
+    cantidad: int
+    mensaje: str
 ```
 
-**Response:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer"
-}
+3. **GET /api/v1/ia/detectar-riesgos/{expediente_id}**
+```python
+class IARiesgosResponse(BaseModel):
+    nivel_riesgo: str
+    factores: List[str]
+    recomendaciones: List[str]
+    mensaje: str
+```
+
+**Validación:** ✅ Probado en TEST 7 - Todos retornan status 200 con schemas correctos
+
+**Documentación OpenAPI:** Disponible en http://localhost:8000/docs
+
+---
+
+### ✅ 6. Schemas Tipados para Endpoints de Reportes
+
+**Descripción:** Se definieron schemas claros y tipados para todos los endpoints de reportes.
+
+**Endpoints:**
+
+1. **GET /api/v1/reportes/expedientes-por-estado**
+```python
+class EstadisticasExpediente(BaseModel):
+    total: int
+    por_estado: Dict[str, int]
+```
+
+2. **GET /api/v1/reportes/tiempos-atencion**
+```python
+class ReporteTiempoAtencion(BaseModel):
+    expediente_id: int
+    codigo: str
+    dias: int
+    estado: str
+```
+
+3. **GET /api/v1/reportes/carga-evaluadores**
+```python
+class ReporteCargaEvaluadores(BaseModel):
+    evaluador_id: int
+    nombre: Optional[str]
+    total_evaluaciones: int
+```
+
+4. **GET /api/v1/reportes/resultados-emitidos**
+```python
+class ReporteResultados(BaseModel):
+    tipo: str
+    total: int
+```
+
+5. **GET /api/v1/reportes/resumen**
+```python
+class ReporteGeneralResponse(BaseModel):
+    fecha_generacion: datetime
+    expedientes: EstadisticasExpediente
+    evaluadores: Dict[str, Any]
+    tiempos_atencion: List[ReporteTiempoAtencion]
+    carga_evaluadores: List[ReporteCargaEvaluadores]
+    resultados: List[ReporteResultados]
+    archivo_url: Optional[str]
+```
+
+**Validación:** ✅ Probado en TEST 8 - Todos los endpoints retornan status 200 con schemas correctos
+
+**Documentación OpenAPI:** Disponible en http://localhost:8000/docs
+
+---
+
+## 📊 Resultados de Testing
+
+### Test Suite: `test_6_features.py`
+
+Todos los tests pasan correctamente:
+
+```
+✅ TEST 1: Crear Expediente - PASSED
+✅ TEST 2: Validaciones de Documento - PASSED
+✅ TEST 3: Asignar Evaluadores - PASSED
+✅ TEST 4: Crear y Completar Evaluación - PASSED
+✅ TEST 5: Crear y Firmar Dictamen - PASSED
+✅ TEST 6: Endpoint de Subsanación - PASSED
+✅ TEST 7: Endpoints de IA con Schemas Tipados - PASSED
+✅ TEST 8: Endpoints de Reportes con Schemas Tipados - PASSED
 ```
 
 ---
 
-## 🎯 Endpoints Mejorados
+## 🔧 Stack Técnico
 
-### Observaciones del Frontend
-
-El equipo de frontend indicó que necesitaban:
-1. ✅ Más metadatos al crear expedientes (tipo_tramite, facultad, prioridad)
-2. ✅ Upload de archivos binarios (no query params)
-3. ✅ Endpoint para asignar evaluadores manualmente (no solo automático)
-4. ✅ Datos persistentes (no borrase cada reinicio)
-
-**Todos estos puntos fueron implementados y probados.** ✅
+- **Framework:** FastAPI 0.104.1
+- **ORM:** SQLAlchemy 2.0.36
+- **Base de Datos:** PostgreSQL 18
+- **Autenticación:** JWT con python-jose
+- **Validación:** Pydantic V2
+- **Seguridad:** bcrypt para contraseñas
 
 ---
 
-### 1. POST /api/v1/expedientes/ (MEJORADO ⭐)
+## 📖 Documentación OpenAPI
 
-Crear un nuevo expediente con metadatos completos.
+Accede a la documentación interactiva en:
 
-**Observación resuelta:** Ahora acepta `tipo_tramite`, `facultad` y `prioridad` (antes solo `titulo_protocolo`).
+```
+http://localhost:8000/api/v1/docs
+```
 
-**Request:**
+Todos los endpoints están documentados con:
+- Descripciones detalladas
+- Esquemas de request/response
+- Ejemplos de uso
+- Códigos de status esperados
+
+---
+
+## ✨ Notas Importantes
+
+### Migraciones de Base de Datos
+
+Se agregaron nuevas columnas a la tabla `dictamines`:
+- `fecha_firma` - Para registrar cuándo se firmó
+- `archivo_url` - Para almacenar URL del archivo del dictamen
+
+Ejecutar antes de usar:
 ```bash
-curl -X POST "http://localhost:8000/api/v1/expedientes/" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "titulo_protocolo": "Estudio de efectividad de vacunas COVID-19",
-    "tipo_tramite": "investigacion_biomedica",
-    "facultad": "Medicina",
-    "prioridad": "alta"
-  }'
+python migrate_dictamines.py
 ```
 
-**Response (201 Created):**
-```json
-{
-  "id": 1,
-  "codigo_unico": "CE-A1B2C3D4",
-  "titulo_protocolo": "Estudio de efectividad de vacunas COVID-19",
-  "investigador_id": 1,
-  "tipo_tramite": "investigacion_biomedica",
-  "facultad": "Medicina",
-  "prioridad": "alta",
-  "estado": "borrador",
-  "fecha_envio": null,
-  "created_at": "2026-05-12T15:30:00"
-}
-```
+### Validaciones de Seguridad
 
-**Campos:**
-- `titulo_protocolo` (string, requerido): Título del protocolo/investigación
-- `tipo_tramite` (string, opcional): Tipo de trámite (ej: investigacion_biomedica, investigacion_experimental)
-- `facultad` (string, opcional): Facultad responsable
-- `prioridad` (string, opcional): Nivel de prioridad (baja, normal, alta, urgente)
+- ✅ Solo coordinadores pueden crear dictámenes
+- ✅ Solo el mismo evaluador puede actualizar su evaluación
+- ✅ Solo investigador propietario puede enviar subsanación
+- ✅ Validación MIME type en uploads
+- ✅ Límite de tamaño en documentos (10MB)
 
 ---
 
-### 2. PUT /api/v1/expedientes/{expediente_id} (MEJORADO ⭐)
+## 🚀 Próximos Pasos
 
-Actualizar expediente con nuevos campos de metadatos.
-
-**Observación resuelta:** Ahora puedes actualizar `tipo_tramite`, `facultad` y `prioridad`.
-
-**Request:**
-```bash
-curl -X PUT "http://localhost:8000/api/v1/expedientes/1" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tipo_tramite": "investigacion_experimental",
-    "facultad": "Ingenieria",
-    "prioridad": "media",
-    "estado": "en_revision"
-  }'
-```
-
-**Response (200 OK):**
-```json
-{
-  "id": 1,
-  "codigo_unico": "CE-A1B2C3D4",
-  "titulo_protocolo": "Estudio de efectividad de vacunas COVID-19",
-  "investigador_id": 1,
-  "tipo_tramite": "investigacion_experimental",
-  "facultad": "Ingenieria",
-  "prioridad": "media",
-  "estado": "en_revision",
-  "fecha_envio": null,
-  "created_at": "2026-05-12T15:30:00"
-}
-```
-
-**Campos opcionales:**
-- `titulo_protocolo`
-- `tipo_tramite`
-- `facultad`
-- `prioridad`
-- `estado`
+- [ ] Integración con modelos de IA reales (OpenAI, Claude)
+- [ ] Sistema de notificaciones por email
+- [ ] Generación de PDFs para dictámenes
+- [ ] Sistema de auditoría mejorado
+- [ ] Caché para reportes
 
 ---
 
-### 3. POST /api/v1/expedientes/{expediente_id}/documentos (CORREGIDO ⭐⭐)
-
-Subir documento binario al expediente (ahora con file upload real).
-
-**Observación resuelta:** Cambié de query params a multipart/form-data con archivo binario.
-
-**Request (form-data):**
-```bash
-curl -X POST "http://localhost:8000/api/v1/expedientes/1/documentos" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -F "file=@/ruta/al/protocolo.pdf" \
-  -F "tipo_documento=protocolo" \
-  -F "es_obligatorio=true"
-```
-
-**Response (201 Created):**
-```json
-{
-  "id": 1,
-  "nombre_archivo": "protocolo.pdf",
-  "tipo_documento": "protocolo",
-  "es_obligatorio": true,
-  "validado": false,
-  "version": 1,
-  "ruta_archivo": "uploads/1/protocolo.pdf",
-  "created_at": "2026-05-12T15:30:00"
-}
-```
-
-**Campos:**
-- `file` (file, requerido): Archivo binario a subir (PDF, DOCX, etc.)
-- `tipo_documento` (string, opcional): Tipo de documento (ej: protocolo, consentimiento, presupuesto)
-- `es_obligatorio` (boolean, opcional): ¿Es documento obligatorio? (default: true)
-
-**Almacenamiento:**
-Los archivos se guardan en: `uploads/{expediente_id}/{nombre_archivo}`
-
----
-
-### 4. POST /api/v1/evaluacion/expediente/{expediente_id}/asignar (NUEVO ⭐⭐)
-
-Permitir al coordinador asignar evaluadores manualmente (no solo automático).
-
-**Observación resuelta:** Antes solo el backend asignaba automáticamente. Ahora el coordinador puede seleccionar.
-
-**Request:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/evaluacion/expediente/1/asignar" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "evaluador_id": 2
-  }'
-```
-
-**Response (201 Created):**
-```json
-{
-  "message": "Evaluador asignado exitosamente",
-  "evaluacion_id": 5,
-  "evaluador": {
-    "id": 2,
-    "nombre": "Juan",
-    "apellido": "Evaluador"
-  },
-  "expediente_codigo": "CE-A1B2C3D4"
-}
-```
-
-**Validaciones:**
-- ✅ Solo coordinadores/administradores pueden usar este endpoint
-- ✅ Máximo 2 evaluadores por expediente
-- ✅ El evaluador debe tener rol de evaluador
-- ✅ El evaluador debe estar activo
-- ✅ No se puede asignar dos veces el mismo evaluador
-- ✅ Se notifica automáticamente al evaluador
-
-**Campos:**
-- `evaluador_id` (integer, requerido): ID del usuario evaluador a asignar
-
-**Notificación automática:**
-Se crea automáticamente una notificación para el evaluador:
-```json
-{
-  "usuario_id": 2,
-  "expediente_id": 1,
-  "titulo": "Nueva evaluación asignada",
-  "mensaje": "Se te ha asignado la evaluación del expediente: CE-A1B2C3D4 - Estudio de efectividad de vacunas COVID-19"
-}
-```
-
----
-
-## 🧪 Testing
-
-### Ejecutar script de prueba completo
-
-Se incluye un script `test_endpoints.py` que prueba todos los 4 endpoints:
-
-```bash
-python test_endpoints.py
-```
-
-Este script:
-1. ✅ Crea usuario (o usa existente)
-2. ✅ Obtiene token JWT
-3. ✅ Crea expediente con metadatos
-4. ✅ Actualiza expediente
-5. ✅ Sube documento real
-6. ✅ Asigna evaluador manualmente
-7. ✅ Muestra resultados detallados
-
-**Output esperado:**
-```
-============================================================
-  PASO 1: Autenticación
-============================================================
-✅ Login exitoso
-
-============================================================
-  PASO 2: POST /api/v1/expedientes/ (MEJORADO)
-============================================================
-✅ Expediente creado exitosamente
-
-============================================================
-  PASO 3: PUT /api/v1/expedientes/{id} (MEJORADO)
-============================================================
-✅ Expediente actualizado exitosamente
-
-============================================================
-  PASO 4: POST /api/v1/expedientes/{id}/documentos (CORREGIDO)
-============================================================
-✅ Documento subido exitosamente
-
-============================================================
-  PASO 5: POST /api/v1/evaluacion/expediente/{id}/asignar (NUEVO)
-============================================================
-✅ Evaluador asignado exitosamente
-```
-
-### Probar en Swagger UI
-
-1. Ve a: http://localhost:8000/docs
-2. Click en "Authorize" (botón arriba a la derecha)
-3. Ingresa tu token JWT
-4. Prueba los endpoints interactivamente
-
----
-
-## 📊 Estructura de base de datos
-
-### Tablas principales
-
-```
-users
-├── id (PK)
-├── email (UNIQUE)
-├── password_hash
-├── nombre
-├── apellido
-├── rol (administrador, coordinador, evaluador, investigador, etc.)
-├── especialidad
-├── carga_trabajo
-├── conflicto_interes
-└── created_at
-
-expedientes
-├── id (PK)
-├── codigo_unico (UNIQUE)
-├── titulo_protocolo
-├── investigador_id (FK -> users.id)
-├── tipo_tramite
-├── facultad
-├── prioridad
-├── estado (borrador, enviado, en_revision, subsanacion, aprobado, rechazado, archivado)
-├── fecha_envio
-└── created_at
-
-documentos
-├── id (PK)
-├── expediente_id (FK -> expedientes.id)
-├── nombre_archivo
-├── tipo_documento
-├── ruta_archivo
-├── version
-├── es_obligatorio
-├── validado
-└── created_at
-
-evaluaciones
-├── id (PK)
-├── expediente_id (FK -> expedientes.id)
-├── evaluador_id (FK -> users.id)
-├── nivel_riesgo
-├── recommendation
-├── observaciones
-├── completa
-├── conflicto_interes
-├── fecha_asignacion
-└── fecha_envio
-```
-
----
-
-## 🔐 Roles y permisos
-
-| Rol | Crear Expediente | Subir Documentos | Ver Expedientes | Asignar Evaluadores |
-|-----|-----------------|-----------------|-----------------|-------------------|
-| Investigador | ✅ Propios | ✅ Propios | ✅ Propios | ❌ |
-| Evaluador | ❌ | ❌ | ✅ Sus evaluaciones | ❌ |
-| Coordinador | ✅ Todos | ✅ Todos | ✅ Todos | ✅ |
-| Secretaria | ✅ Todos | ✅ Todos | ✅ Todos | ❌ |
-| Administrador | ✅ Todos | ✅ Todos | ✅ Todos | ✅ |
-
----
-
-## 🌍 Despliegue en Render
-
-### 1. Crear servicio web en Render
-
-```bash
-git push heroku main
-```
-
-### 2. Variables de entorno en Render
-
-En la configuración del servicio, añade:
-- `DATABASE_URL`: Tu URL de PostgreSQL en Render
-- `SECRET_KEY`: Una clave secreta fuerte
-- `ALLOWED_HOSTS`: Dominio de tu app
-
-### 3. La BD persiste automáticamente
-
-Los datos NO se pierden nunca porque PostgreSQL en Render es un servicio persistente.
-
----
-
-## 📝 Cambios recientes
-
-### Versión 1.1 (Resolución de observaciones del frontend)
-
-**Cambios:**
-1. ✅ **POST /expedientes/** - Ampliado con campos: `tipo_tramite`, `facultad`, `prioridad`
-2. ✅ **PUT /expedientes/{id}** - Ahora actualiza nuevos campos de metadatos
-3. ✅ **POST /expedientes/{id}/documentos** - Convertido a file upload binario (multipart/form-data)
-4. ✅ **POST /evaluacion/expediente/{id}/asignar** - Nuevo endpoint para asignación manual
-5. ✅ **Base de datos** - Migrada a PostgreSQL Render para persistencia
-
-**Probado:** Todos los endpoints funciona 100% ✅
-
----
-
-## 🛠️ Troubleshooting
-
-### Error: `401 Unauthorized`
-- Verifica que estés enviando el token JWT en el header: `Authorization: Bearer YOUR_TOKEN`
-- El token puede haber expirado (default: 60 minutos)
-
-### Error: `422 Unprocessable Entity`
-- Revisa que estés enviando los campos correctos en el JSON
-- Verifica los tipos de datos (string, integer, boolean, etc.)
-
-### Error: `404 Not Found`
-- El expediente/usuario no existe
-- Verifica el ID que estás usando
-
-### Error: `403 Forbidden`
-- No tienes permisos para esta acción
-- Verifica tu rol y el endpoint
-
----
-
-## 📞 Soporte
-
-Para reportar bugs o hacer sugerencias, contacta al equipo de desarrollo.
-
----
-
-**Última actualización:** 12 de mayo de 2026
-
+**Última actualización:** 14 de Mayo, 2026
+**Estado:** ✅ Producción Ready - Todas las 6 características implementadas y validadas

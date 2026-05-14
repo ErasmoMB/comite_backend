@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -124,6 +124,7 @@ class EvaluacionResponse(EvaluacionBase):
     expediente_id: int
     evaluador_id: int
     nivel_riesgo: Optional[str]
+    recommendation: Optional[str]
     observaciones: Optional[str]
     completa: bool
     conflicto_interes: bool
@@ -149,6 +150,9 @@ class DictamenResponse(DictamenBase):
     numero_dictamen: Optional[str]
     tipo_dictamen: Optional[str]
     firmado: bool
+    fecha_emision: Optional[datetime] = None
+    fecha_firma: Optional[datetime] = None
+    archivo_url: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -174,3 +178,74 @@ class NotificacionResponse(NotificacionBase):
 
     class Config:
         from_attributes = True
+
+
+# ==================== SUBSANACIÓN ====================
+class SubsanacionRequest(BaseModel):
+    observaciones: str
+    documentos_respuesta: Optional[List[str]] = None
+
+class SubsanacionResponse(BaseModel):
+    mensaje: str
+    expediente_id: int
+    estado: str
+    fecha_subsanacion: datetime
+
+
+# ==================== IA - SCHEMAS CLAROS ====================
+class IAAnalisisResponse(BaseModel):
+    """Respuesta de análisis de IA para expediente"""
+    analisis: str
+    nivel_riesgo: str  # "bajo", "medio", "alto"
+    recomendaciones: List[str]
+    confianza: float  # 0-100
+    factores_clave: Optional[List[str]] = None
+
+class IAInconsistenciasResponse(BaseModel):
+    """Respuesta de detección de inconsistencias"""
+    inconsistencias: List[Dict[str, Any]]
+    cantidad: int
+    mensaje: str
+
+class IARiesgosResponse(BaseModel):
+    """Respuesta de evaluación de riesgos éticos"""
+    nivel_riesgo: str  # "bajo", "medio", "alto", "pendiente_analisis"
+    factores: List[str]
+    recomendaciones: List[str]
+    mensaje: str
+
+
+# ==================== REPORTES - SCHEMAS CLAROS ====================
+class EstadisticasExpediente(BaseModel):
+    total: int
+    por_estado: Dict[str, int]
+
+class EstadisticasEvaluadores(BaseModel):
+    total_evaluadores: int
+    carga_promedio: float
+    carga_maxima: int
+
+class ReporteTiempoAtencion(BaseModel):
+    expediente_id: int
+    codigo: str
+    dias: int
+    estado: str
+
+class ReporteCargaEvaluadores(BaseModel):
+    evaluador_id: int
+    nombre: Optional[str]
+    total_evaluaciones: int
+
+class ReporteResultados(BaseModel):
+    tipo: str
+    total: int
+
+class ReporteGeneralResponse(BaseModel):
+    """Reporte general del sistema"""
+    fecha_generacion: datetime
+    expedientes: EstadisticasExpediente
+    evaluadores: EstadisticasEvaluadores
+    tiempos_atencion: List[ReporteTiempoAtencion]
+    carga_evaluadores: List[ReporteCargaEvaluadores]
+    resultados: List[ReporteResultados]
+    archivo_url: Optional[str] = None
