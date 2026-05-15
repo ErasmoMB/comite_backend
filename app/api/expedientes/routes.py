@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
@@ -110,10 +110,26 @@ def get_historial(expediente_id: int, db: Session = Depends(get_db), current_use
     historial = db.query(HistorialExpediente).filter(HistorialExpediente.expediente_id == expediente_id).order_by(HistorialExpediente.created_at.desc()).all()
     return historial
 
-@router.post("/{expediente_id}/documentos", response_model=DocumentoResponse)
+@router.post(
+    "/{expediente_id}/documentos", 
+    response_model=DocumentoResponse,
+    summary="Subir documento a expediente",
+    description="""
+    Sube un documento a un expediente.
+
+    **Validaciones:**
+    - Tipos MIME permitidos: application/pdf, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, text/plain
+    - Extensiones permitidas: .pdf, .doc, .docx, .xls, .xlsx, .txt
+    - Tamaño máximo: 10 MB
+    """,
+    responses={
+        400: {"description": "Archivo no válido (tipo, extensión o tamaño incorrecto)"},
+        404: {"description": "Expediente no encontrado"},
+    }
+)
 async def upload_documento(
     expediente_id: int, 
-    file: UploadFile = File(...), 
+    file: UploadFile = File(..., description="Archivo a subir (PDF, DOC, DOCX, XLS, XLSX, TXT - máx 10MB)"), 
     tipo_documento: str = "documento",
     es_obligatorio: bool = True,
     db: Session = Depends(get_db), 
@@ -192,17 +208,47 @@ async def upload_documento(
     return doc
 
 
-@router.post("/{expediente_id}/subsanacion", response_model=SubsanacionResponse)
-async def submit_subsanacion(
-    expediente_id: int,
-    observaciones: str = "",
-    db: Session = Depends(get_db),
+@router.get("/{expediente_id}/documentos", response_model=List[DocumentoResponse])
+def get_documentos(
+    expediente_id: int, 
+    db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
     """
-    Registra la respuesta de subsanación del investigador.
-    El investigador responde a las observaciones de evaluadores.
+    Lista todos los documentos asociados a un expediente.
     """
+    exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
+    if not exp:
+        raise HTTPException(status_code=404, detail="Expediente no encontrado")
+    
+    if current_user.rol == RolEnum.INVESTIGADOR and exp.investigador_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes acceso a este expediente")
+    
+    documentos = db.query(Documento).filter(Documento.expediente_id == expediente_id).all()
+    return documentos
+
+
+@router.post(
+    "/{expediente_id}/subsanacion", 
+    response_model=SubsanacionResponse,
+    summary="Registrar subsanación",
+    description="""
+    Registra la respuesta de subsanación del investigador a las observaciones.
+    
+    El investigador debe estar en estado SUBSANACION para poder enviar la subsanación.
+    Esta ответа permite al investigador responder a las observaciones de los evaluadores.
+    """,
+    responses={
+        400: {"description": "El expediente no está en estado SUBSANACION"},
+        404: {"description": "Expediente no encontrado"},
+    }
+)
+async def submit_subsanacion(
+    expediente_id: int,
+    observaciones: str = Form(..., description="Respuesta del investigador a las observaciones"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
     if not exp:
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
