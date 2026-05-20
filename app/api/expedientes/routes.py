@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
@@ -227,6 +228,76 @@ def get_documentos(
     documentos = db.query(Documento).filter(Documento.expediente_id == expediente_id).all()
     return documentos
 
+@router.get("/{expediente_id}/documentos/{documento_id}/descargar")
+async def descargar_documento(
+    expediente_id: int,
+    documento_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Descarga un documento específico de un expediente.
+    
+    **Acceso:**
+    - Investigador: Solo sus propios expedientes
+    - Admin/Coordinador/Secretaria: Todos los expedientes
+    - Evaluador: Expedientes que le fueron asignados
+    """
+    # Validar que el expediente existe
+    exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
+    if not exp:
+        raise HTTPException(status_code=404, detail="Expediente no encontrado")
+    
+    # Validar acceso al expediente
+    if current_user.rol == RolEnum.INVESTIGADOR and exp.investigador_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes acceso a este expediente")
+    
+    if current_user.rol == RolEnum.EVALUADOR:
+        # Verificar que sea evaluador asignado
+        evaluacion = db.query(Evaluacion).filter(
+            Evaluacion.expediente_id == expediente_id,
+            Evaluacion.evaluador_id == current_user.id
+        ).first()
+        if not evaluacion:
+            raise HTTPException(status_code=403, detail="No tienes acceso a este expediente")
+    
+    # Buscar el documento
+    doc = db.query(Documento).filter(
+        Documento.id == documento_id,
+        Documento.expediente_id == expediente_id
+    ).first()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    if not doc.ruta_archivo:
+        raise HTTPException(status_code=400, detail="Documento sin ruta de archivo")
+    
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    
+    file_path = Path(doc.ruta_archivo)
+    
+    # Validar que el archivo existe
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en servidor")
+    
+    # Registrar descarga en bitácora
+    registrar_bitacora(
+        db,
+        expediente_id,
+        "Documento descargado",
+        f"Documento: {doc.nombre_archivo} (ID: {documento_id})",
+        current_user.id
+    )
+    db.commit()
+    
+    # Servir el archivo
+    return FileResponse(
+        path=file_path,
+        filename=doc.nombre_archivo,
+        media_type="application/octet-stream"
+    )
 
 @router.post(
     "/{expediente_id}/subsanacion", 

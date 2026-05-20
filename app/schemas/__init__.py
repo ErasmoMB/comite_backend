@@ -128,6 +128,7 @@ class EvaluacionResponse(EvaluacionBase):
     observaciones: Optional[str]
     completa: bool
     conflicto_interes: bool
+    titulo_protocolo: Optional[str] = None
     created_at: datetime = Field(validation_alias="fecha_asignacion")
 
     class Config:

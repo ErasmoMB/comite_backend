@@ -99,6 +99,13 @@ class Evaluacion(Base):
     expediente = relationship("Expediente", back_populates="evaluaciones")
     evaluador = relationship("User", back_populates="evaluaciones")
 
+    @property
+    def titulo_protocolo(self):
+        """Propiedad para acceder al título del protocolo del expediente asociado"""
+        if self.expediente:
+            return self.expediente.titulo_protocolo
+        return None
+
 
 class Dictamen(Base):
     __tablename__ = "dictamines"
