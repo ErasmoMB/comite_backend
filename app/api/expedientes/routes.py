@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
+import mimetypes
+from urllib.parse import quote
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
@@ -228,7 +230,25 @@ def get_documentos(
     documentos = db.query(Documento).filter(Documento.expediente_id == expediente_id).all()
     return documentos
 
-@router.get("/{expediente_id}/documentos/{documento_id}/descargar")
+@router.get(
+    "/{expediente_id}/documentos/{documento_id}/descargar",
+    summary="Descargar documento",
+    description="Descarga un documento específico de un expediente.",
+    responses={
+        200: {
+            "content": {"application/octet-stream": {}},
+            "description": "Archivo descargado exitosamente",
+            "headers": {
+                "Content-Disposition": {"description": "Nombre del archivo para descargar", "schema": {"type": "string"}},
+                "Content-Type": {"description": "Tipo MIME del archivo", "schema": {"type": "string"}},
+                "Content-Length": {"description": "Tamaño del archivo", "schema": {"type": "integer"}},
+            }
+        },
+        403: {"description": "No tienes acceso a este expediente"},
+        404: {"description": "Expediente o documento no encontrado"},
+        400: {"description": "Documento sin ruta de archivo"},
+    }
+)
 async def descargar_documento(
     expediente_id: int,
     documento_id: int,
@@ -242,6 +262,11 @@ async def descargar_documento(
     - Investigador: Solo sus propios expedientes
     - Admin/Coordinador/Secretaria: Todos los expedientes
     - Evaluador: Expedientes que le fueron asignados
+    
+    **Response Headers:**
+    - Content-Type: Detectado automáticamente (PDF, DOCX, XLSX, TXT, etc.)
+    - Content-Disposition: attachment; filename con UTF-8 encoding
+    - Access-Control-Expose-Headers: Para acceso desde frontend
     """
     # Validar que el expediente existe
     exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
@@ -274,7 +299,6 @@ async def descargar_documento(
         raise HTTPException(status_code=400, detail="Documento sin ruta de archivo")
     
     from pathlib import Path
-    from fastapi.responses import FileResponse
     
     file_path = Path(doc.ruta_archivo)
     
@@ -292,13 +316,122 @@ async def descargar_documento(
     )
     db.commit()
     
-    # Servir el archivo
+    # Detectar Content-Type
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    if not content_type:
+        content_type = "application/octet-stream"
+    
+    # Headers para descarga con UTF-8
+    filename_utf8 = quote(doc.nombre_archivo, safe='')
+    
+    # Servir el archivo con headers optimizados
     return FileResponse(
         path=file_path,
-        filename=doc.nombre_archivo,
-        media_type="application/octet-stream"
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{doc.nombre_archivo}"; filename*=UTF-8\'\'{filename_utf8}',
+            "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
+        }
     )
 
+@router.get(
+    "/{expediente_id}/documentos/{documento_id}/preview",
+    summary="Previsualizar documento",
+    description="Previsualiza un documento en el navegador (abre inline).",
+    responses={
+        200: {
+            "content": {"application/octet-stream": {}},
+            "description": "Documento para previsualizar en navegador",
+            "headers": {
+                "Content-Disposition": {"description": "inline; filename", "schema": {"type": "string"}},
+                "Content-Type": {"description": "Tipo MIME del archivo", "schema": {"type": "string"}},
+            }
+        },
+        403: {"description": "No tienes acceso a este expediente"},
+        404: {"description": "Expediente o documento no encontrado"},
+    }
+)
+async def preview_documento(
+    expediente_id: int,
+    documento_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Previsualiza un documento en el navegador (abre en pestaña nueva).
+    
+    **Diferencia con /descargar:**
+    - `/descargar` → Content-Disposition: attachment (descarga archivo)
+    - `/preview` → Content-Disposition: inline (abre en navegador para PDFs)
+    
+    **Acceso:**
+    - Investigador: Solo sus propios expedientes
+    - Admin/Coordinador/Secretaria: Todos los expedientes
+    - Evaluador: Expedientes que le fueron asignados
+    """
+    from pathlib import Path
+    
+    # Validar que el expediente existe
+    exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
+    if not exp:
+        raise HTTPException(status_code=404, detail="Expediente no encontrado")
+    
+    # Validar acceso al expediente
+    if current_user.rol == RolEnum.INVESTIGADOR and exp.investigador_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes acceso a este expediente")
+    
+    if current_user.rol == RolEnum.EVALUADOR:
+        evaluacion = db.query(Evaluacion).filter(
+            Evaluacion.expediente_id == expediente_id,
+            Evaluacion.evaluador_id == current_user.id
+        ).first()
+        if not evaluacion:
+            raise HTTPException(status_code=403, detail="No tienes acceso a este expediente")
+    
+    # Buscar el documento
+    doc = db.query(Documento).filter(
+        Documento.id == documento_id,
+        Documento.expediente_id == expediente_id
+    ).first()
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    if not doc.ruta_archivo:
+        raise HTTPException(status_code=400, detail="Documento sin ruta de archivo")
+    
+    file_path = Path(doc.ruta_archivo)
+    
+    # Validar que el archivo existe
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en servidor")
+    
+    # Registrar preview en bitácora
+    registrar_bitacora(
+        db,
+        expediente_id,
+        "Documento previsualizador",
+        f"Archivo: {doc.nombre_archivo} (ID: {documento_id})",
+        current_user.id
+    )
+    db.commit()
+    
+    # Detectar Content-Type
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    if not content_type:
+        content_type = "application/octet-stream"
+    
+    # Headers para preview (inline)
+    filename_utf8 = quote(doc.nombre_archivo, safe='')
+    
+    return FileResponse(
+        path=file_path,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{doc.nombre_archivo}"; filename*=UTF-8\'\'{filename_utf8}',
+            "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
+        }
+    )
 @router.post(
     "/{expediente_id}/subsanacion", 
     response_model=SubsanacionResponse,
