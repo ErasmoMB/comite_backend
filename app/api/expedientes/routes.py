@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import mimetypes
 from urllib.parse import quote
 from sqlalchemy.orm import Session
@@ -351,10 +351,11 @@ async def descargar_documento(
     
     # Check if file is in S3
     if doc.ruta_archivo.startswith('uploads/'):
-        # S3 storage: generate presigned URL and redirect
+        # S3 storage: stream file from S3 through backend
         try:
             import boto3
             import os
+            import httpx
             
             s3_client = boto3.client(
                 's3',
@@ -369,10 +370,17 @@ async def descargar_documento(
                 ExpiresIn=3600
             )
             
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(url=presigned_url, headers=headers)
+            # Fetch from S3 and stream to client
+            response = httpx.get(presigned_url)
+            response.raise_for_status()
+            
+            return StreamingResponse(
+                iter([response.content]),
+                media_type=content_type,
+                headers=headers
+            )
         except Exception as e:
-            print(f"Error generando presigned URL: {e}")
+            print(f"Error accediendo a S3: {e}")
             raise HTTPException(status_code=500, detail="Error al acceder al documento")
     else:
         # Local storage
@@ -479,10 +487,11 @@ async def preview_documento(
     
     # Check if file is in S3
     if doc.ruta_archivo.startswith('uploads/'):
-        # S3 storage: generate presigned URL and redirect
+        # S3 storage: stream file from S3 through backend
         try:
             import boto3
             import os
+            import httpx
             
             s3_client = boto3.client(
                 's3',
@@ -497,10 +506,17 @@ async def preview_documento(
                 ExpiresIn=3600
             )
             
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(url=presigned_url, headers=headers)
+            # Fetch from S3 and stream to client
+            response = httpx.get(presigned_url)
+            response.raise_for_status()
+            
+            return StreamingResponse(
+                iter([response.content]),
+                media_type=content_type,
+                headers=headers
+            )
         except Exception as e:
-            print(f"Error generando presigned URL: {e}")
+            print(f"Error accediendo a S3: {e}")
             raise HTTPException(status_code=500, detail="Error al acceder al documento")
     else:
         # Local storage
