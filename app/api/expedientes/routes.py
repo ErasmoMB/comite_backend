@@ -327,14 +327,6 @@ async def descargar_documento(
     if not doc.ruta_archivo:
         raise HTTPException(status_code=400, detail="Documento sin ruta de archivo")
     
-    from pathlib import Path
-    
-    file_path = Path(doc.ruta_archivo)
-    
-    # Validar que el archivo existe
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Archivo no encontrado en servidor")
-    
     # Registrar descarga en bitácora
     registrar_bitacora(
         db,
@@ -346,22 +338,56 @@ async def descargar_documento(
     db.commit()
     
     # Detectar Content-Type
-    content_type, _ = mimetypes.guess_type(str(file_path))
+    content_type, _ = mimetypes.guess_type(str(doc.ruta_archivo))
     if not content_type:
         content_type = "application/octet-stream"
     
-    # Headers para descarga con UTF-8
+    # Headers para descarga (attachment)
     filename_utf8 = quote(doc.nombre_archivo, safe='')
+    headers = {
+        "Content-Disposition": f'attachment; filename="{doc.nombre_archivo}"; filename*=UTF-8\'\'{filename_utf8}',
+        "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
+    }
     
-    # Servir el archivo con headers optimizados
-    return FileResponse(
-        path=file_path,
-        media_type=content_type,
-        headers={
-            "Content-Disposition": f'attachment; filename="{doc.nombre_archivo}"; filename*=UTF-8\'\'{filename_utf8}',
-            "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
-        }
-    )
+    # Check if file is in S3
+    if doc.ruta_archivo.startswith('uploads/'):
+        # S3 storage: generate presigned URL and redirect
+        try:
+            import boto3
+            import os
+            
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                region_name=os.getenv('AWS_S3_REGION', 'us-east-1')
+            )
+            
+            presigned_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': os.getenv('AWS_S3_BUCKET', 'comite-etica-pdfs'), 'Key': doc.ruta_archivo},
+                ExpiresIn=3600
+            )
+            
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=presigned_url, headers=headers)
+        except Exception as e:
+            print(f"Error generando presigned URL: {e}")
+            raise HTTPException(status_code=500, detail="Error al acceder al documento")
+    else:
+        # Local storage
+        from pathlib import Path
+        file_path = Path(doc.ruta_archivo)
+        
+        # Validar que el archivo existe
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Archivo no encontrado en servidor")
+        
+        return FileResponse(
+            path=file_path,
+            media_type=content_type,
+            headers=headers
+        )
 
 @router.get(
     "/{expediente_id}/documentos/{documento_id}/preview",
@@ -429,12 +455,6 @@ async def preview_documento(
     if not doc.ruta_archivo:
         raise HTTPException(status_code=400, detail="Documento sin ruta de archivo")
     
-    file_path = Path(doc.ruta_archivo)
-    
-    # Validar que el archivo existe
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Archivo no encontrado en servidor")
-    
     # Registrar preview en bitácora
     registrar_bitacora(
         db,
@@ -446,21 +466,55 @@ async def preview_documento(
     db.commit()
     
     # Detectar Content-Type
-    content_type, _ = mimetypes.guess_type(str(file_path))
+    content_type, _ = mimetypes.guess_type(str(doc.ruta_archivo))
     if not content_type:
         content_type = "application/octet-stream"
     
     # Headers para preview (inline)
     filename_utf8 = quote(doc.nombre_archivo, safe='')
+    headers = {
+        "Content-Disposition": f'inline; filename="{doc.nombre_archivo}"; filename*=UTF-8\'\'{filename_utf8}',
+        "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
+    }
     
-    return FileResponse(
-        path=file_path,
-        media_type=content_type,
-        headers={
-            "Content-Disposition": f'inline; filename="{doc.nombre_archivo}"; filename*=UTF-8\'\'{filename_utf8}',
-            "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
-        }
-    )
+    # Check if file is in S3
+    if doc.ruta_archivo.startswith('uploads/'):
+        # S3 storage: generate presigned URL and redirect
+        try:
+            import boto3
+            import os
+            
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                region_name=os.getenv('AWS_S3_REGION', 'us-east-1')
+            )
+            
+            presigned_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': os.getenv('AWS_S3_BUCKET', 'comite-etica-pdfs'), 'Key': doc.ruta_archivo},
+                ExpiresIn=3600
+            )
+            
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=presigned_url, headers=headers)
+        except Exception as e:
+            print(f"Error generando presigned URL: {e}")
+            raise HTTPException(status_code=500, detail="Error al acceder al documento")
+    else:
+        # Local storage
+        file_path = Path(doc.ruta_archivo)
+        
+        # Validar que el archivo existe
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Archivo no encontrado en servidor")
+        
+        return FileResponse(
+            path=file_path,
+            media_type=content_type,
+            headers=headers
+        )
 @router.post(
     "/{expediente_id}/subsanacion", 
     response_model=SubsanacionResponse,
