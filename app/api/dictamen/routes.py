@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
@@ -190,9 +190,13 @@ async def descargar_dictamen(
     
     **Autenticación:** Requerida
     
+    **Comportamiento:**
+    - Si archivo_url es URL de S3: Redirige a presigned URL
+    - Si es ruta local: Sirve el archivo local
+    
     **Respuesta:**
-    - Content-Type: application/pdf
-    - Content-Disposition: attachment; filename="DICT-XXXX.pdf"
+    - 302 Redirect a S3 presigned URL, O
+    - FileResponse con PDF local
     """
     dictamen = db.query(Dictamen).filter(Dictamen.id == dictamen_id).first()
     if not dictamen:
@@ -204,6 +208,11 @@ async def descargar_dictamen(
             detail="Este dictamen no tiene PDF disponible (solo aprobados generan PDF)"
         )
     
+    # Si es URL de S3 (presigned URL), redirigir directamente
+    if dictamen.archivo_url.startswith('http'):
+        return RedirectResponse(url=dictamen.archivo_url)
+    
+    # Si es ruta local, servir archivo
     pdf_path = Path(dictamen.archivo_url)
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="Archivo PDF no encontrado en almacenamiento")
