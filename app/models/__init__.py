@@ -18,8 +18,12 @@ class EstadoExpedienteEnum(str, enum.Enum):
     EN_REVISION = "en_revision"
     SUBSANACION = "subsanacion"
     APROBADO = "aprobado"
-    RECHAZADO = "rechazado"
     ARCHIVADO = "archivado"
+
+class TipoDictamenEnum(str, enum.Enum):
+    """Estados permitidos para dictamen: solo APROBADO u OBSERVADO"""
+    APROBADO = "aprobado"
+    OBSERVADO = "observado"
 
 class User(Base):
     __tablename__ = "users"
