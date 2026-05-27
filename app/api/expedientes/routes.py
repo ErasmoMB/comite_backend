@@ -181,25 +181,54 @@ async def upload_documento(
     import os
     from pathlib import Path
     import uuid
-    
-    upload_dir = Path("uploads") / str(expediente_id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
+    import boto3
+    from datetime import datetime
     
     # Generar nombre único para evitar conflictos
     nombre_base = PathlibPath(file.filename).stem
     extension = PathlibPath(file.filename).suffix
     nombre_unico = f"{nombre_base}_{uuid.uuid4().hex[:8]}{extension}"
     
-    file_path = upload_dir / nombre_unico
-    with open(file_path, "wb") as buffer:
-        buffer.write(contenido)
+    # Try S3 upload first
+    ruta_final = None
+    try:
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.getenv('AWS_S3_REGION', 'us-east-1')
+        )
+        
+        # Upload to S3
+        s3_key = f"uploads/{expediente_id}/{nombre_unico}"
+        s3_client.put_object(
+            Bucket=os.getenv('AWS_S3_BUCKET', 'comite-etica-pdfs'),
+            Key=s3_key,
+            Body=contenido,
+            ContentType=file.content_type
+        )
+        
+        ruta_final = s3_key
+        print(f"Documento subido a S3: {s3_key}")
+    except Exception as e:
+        print(f"Error subiendo a S3: {e}. Usando almacenamiento local...")
+        
+        # Fallback to local storage
+        upload_dir = Path("uploads") / str(expediente_id)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        file_path = upload_dir / nombre_unico
+        with open(file_path, "wb") as buffer:
+            buffer.write(contenido)
+        
+        ruta_final = str(file_path)
     
     doc = Documento(
         expediente_id=expediente_id, 
         nombre_archivo=file.filename, 
         tipo_documento=tipo_documento, 
         es_obligatorio=es_obligatorio,
-        ruta_archivo=str(file_path)
+        ruta_archivo=ruta_final
     )
     db.add(doc)
     db.commit()
