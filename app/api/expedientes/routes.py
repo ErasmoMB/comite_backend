@@ -8,7 +8,7 @@ from datetime import datetime
 import uuid
 
 from app.db.database import get_db
-from app.models import User, RolEnum, EstadoExpedienteEnum, Expediente, Documento, Bitacora, HistorialExpediente
+from app.models import User, RolEnum, EstadoExpedienteEnum, Expediente, Documento, Bitacora, HistorialExpediente, Evaluacion
 from app.schemas import ExpedienteCreate, ExpedienteResponse, ExpedienteUpdate, DocumentoResponse, SubsanacionResponse
 from app.api.auth.routes import get_current_user
 
