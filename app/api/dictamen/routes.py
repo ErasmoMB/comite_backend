@@ -156,11 +156,10 @@ def firmar_dictamen(
             fecha_firma = datetime.utcnow()
             pdf_path = generar_pdf_dictamen(
                 numero_dictamen=dictamen.numero_dictamen or "DICT-SIN-NUMERO",
-                tipo_dictamen=dictamen.tipo_dictamen,
+                titulo=exp.titulo_protocolo,
                 contenido=dictamen.contenido,
-                titulo_protocolo=exp.titulo_protocolo,
-                investigadores=nombres_investigadores,
-                fecha_firma=fecha_firma
+                investigador_nombre=nombres_investigadores,
+                dictamen_fecha=fecha_firma
             )
             
             # Guardar ruta en BD
