@@ -4,7 +4,7 @@ from typing import Optional, List, Dict
 
 from app.db.database import get_db
 from app.models import User, RolEnum, Expediente, Documento
-from app.schemas import IAAnalisisResponse, IAInconsistenciasResponse, IARiesgosResponse
+from app.schemas import IAAnalisisResponse, IAInconsistenciasResponse
 from app.api.auth.routes import get_current_user
 
 router = APIRouter()
@@ -22,7 +22,6 @@ def preanalisis_expediente(expediente_id: int, db: Session = Depends(get_db), cu
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
     return IAAnalisisResponse(
         analisis=f"Análisis preliminar del protocolo: {exp.titulo_protocolo}. Tipo: {exp.tipo_tramite}. Facultad: {exp.facultad}",
-        nivel_riesgo="medio",
         recomendaciones=[
             "Requiere integración con modelo de IA (OpenAI, Claude, etc.)",
             "Análisis semántico del protocolo",
@@ -43,20 +42,6 @@ def detectar_inconsistencias(expediente_id: int, db: Session = Depends(get_db), 
         inconsistencias=[],
         cantidad=0,
         mensaje="Requiere integración con modelo de IA para análisis de contenido"
-    )
-
-@router.get("/detectar-riesgos/{expediente_id}", response_model=IARiesgosResponse)
-def detectar_riesgos_eticos(expediente_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.rol not in [RolEnum.EVALUADOR, RolEnum.COORDINADOR, RolEnum.SECRETARIA]:
-        raise HTTPException(status_code=403, detail="No tienes acceso")
-    exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
-    if not exp:
-        raise HTTPException(status_code=404, detail="Expediente no encontrado")
-    return IARiesgosResponse(
-        nivel_riesgo="pendiente_analisis",
-        factores=[],
-        recomendaciones=["Requiere integración con modelo de IA para evaluación de riesgos éticos"],
-        mensaje="Análisis pendiente"
     )
 
 @router.get("/generar-observaciones/{expediente_id}")

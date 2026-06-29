@@ -64,8 +64,6 @@ def update_evaluacion(evaluacion_id: int, eval_update: EvaluacionUpdate, db: Ses
     if evaluacion.evaluador_id != current_user.id and current_user.rol != RolEnum.ADMINISTRADOR:
         raise HTTPException(status_code=403, detail="No puedes modificar esta evaluación")
 
-    if eval_update.nivel_riesgo is not None:
-        evaluacion.nivel_riesgo = eval_update.nivel_riesgo
     if eval_update.recommendation is not None:
         evaluacion.recommendation = eval_update.recommendation
     if eval_update.observaciones is not None:
@@ -121,8 +119,6 @@ def guardar_parcial(evaluacion_id: int, eval_update: EvaluacionUpdate, db: Sessi
         raise HTTPException(status_code=403, detail="No tienes acceso")
     if eval_update.observaciones is not None:
         evaluacion.observaciones = eval_update.observaciones
-    if eval_update.nivel_riesgo is not None:
-        evaluacion.nivel_riesgo = eval_update.nivel_riesgo
     db.commit()
     return {"message": "Guardado parcial exitoso"}
 

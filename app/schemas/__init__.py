@@ -92,7 +92,6 @@ class ExpedienteBase(BaseModel):
     titulo_protocolo: str
     tipo_tramite: Optional[str] = "proyecto_nuevo"
     facultad: Optional[str] = None
-    prioridad: Optional[str] = "normal"
     # Flujo dinámico (Fase 1). modalidad se deriva del rol en el backend.
     programa_estudios: Optional[str] = None
     ciclo: Optional[str] = None
@@ -113,7 +112,6 @@ class ExpedienteUpdate(BaseModel):
     titulo_protocolo: Optional[str] = None
     tipo_tramite: Optional[str] = None
     facultad: Optional[str] = None
-    prioridad: Optional[str] = None
     estado: Optional[str] = None
     programa_estudios: Optional[str] = None
     ciclo: Optional[str] = None
@@ -184,7 +182,6 @@ class EvaluacionCreate(EvaluacionBase):
     expediente_id: int
 
 class EvaluacionUpdate(BaseModel):
-    nivel_riesgo: Optional[str] = None
     recommendation: Optional[str] = None
     observaciones: Optional[str] = None
     completa: Optional[bool] = None
@@ -197,7 +194,6 @@ class EvaluacionResponse(EvaluacionBase):
     id: int
     expediente_id: int
     evaluador_id: int
-    nivel_riesgo: Optional[str]
     recommendation: Optional[str]
     observaciones: Optional[str]
     completa: bool
@@ -274,7 +270,6 @@ class SubsanacionResponse(BaseModel):
 class IAAnalisisResponse(BaseModel):
     """Respuesta de análisis de IA para expediente"""
     analisis: str
-    nivel_riesgo: str  # "bajo", "medio", "alto"
     recomendaciones: List[str]
     confianza: float  # 0-100
     factores_clave: Optional[List[str]] = None
@@ -283,13 +278,6 @@ class IAInconsistenciasResponse(BaseModel):
     """Respuesta de detección de inconsistencias"""
     inconsistencias: List[Dict[str, Any]]
     cantidad: int
-    mensaje: str
-
-class IARiesgosResponse(BaseModel):
-    """Respuesta de evaluación de riesgos éticos"""
-    nivel_riesgo: str  # "bajo", "medio", "alto", "pendiente_analisis"
-    factores: List[str]
-    recomendaciones: List[str]
     mensaje: str
 
 
