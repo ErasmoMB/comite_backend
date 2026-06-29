@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse, StreamingResponse
 import mimetypes
 from urllib.parse import quote
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 from datetime import datetime
 import uuid
@@ -135,9 +135,10 @@ def actualizar_estado(db, expediente, nuevo_estado, observaciones=None):
 
 @router.get("/", response_model=List[ExpedienteResponse])
 def get_expedientes(skip: int = 0, limit: int = 50, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    query = db.query(Expediente).options(joinedload(Expediente.investigador))
     if current_user.rol in [RolEnum.ADMINISTRADOR, RolEnum.COORDINADOR, RolEnum.SECRETARIA]:
-        return db.query(Expediente).offset(skip).limit(limit).all()
-    return db.query(Expediente).filter(Expediente.investigador_id == current_user.id).offset(skip).limit(limit).all()
+        return query.offset(skip).limit(limit).all()
+    return query.filter(Expediente.investigador_id == current_user.id).offset(skip).limit(limit).all()
 
 @router.get("/catalogos")
 def get_catalogos(current_user: User = Depends(get_current_user)):

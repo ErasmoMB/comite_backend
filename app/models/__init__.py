@@ -242,6 +242,13 @@ class Expediente(Base):
     bitacora = relationship("Bitacora", back_populates="expediente")
     historial = relationship("HistorialExpediente", back_populates="expediente")
 
+    @property
+    def investigador_nombre(self):
+        """Nombre completo del solicitante (para listados de roles internos)."""
+        if self.investigador:
+            return f"{self.investigador.nombre} {self.investigador.apellido}".strip()
+        return None
+
 
 class AutorExpediente(Base):
     """Integrantes del proyecto. El primero (orden=1) es el responsable/principal."""

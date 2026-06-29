@@ -121,6 +121,7 @@ class ExpedienteResponse(ExpedienteBase):
     id: int
     codigo_unico: Optional[str]
     investigador_id: int
+    investigador_nombre: Optional[str] = None
     modalidad: Optional[str] = None
     estado: str
     fecha_envio: Optional[datetime]
