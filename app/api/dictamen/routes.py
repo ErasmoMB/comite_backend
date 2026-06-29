@@ -14,7 +14,7 @@ from app.utils.pdf_generator import generar_pdf_dictamen
 
 router = APIRouter()
 
-TIPOS_DICTAMEN_VALIDOS = ["aprobado", "observado"]
+TIPOS_DICTAMEN_VALIDOS = ["aprobado", "aprobado_observaciones", "no_aprobado"]
 
 def generar_numero_dictamen():
     año = datetime.now().year
@@ -44,45 +44,42 @@ def get_dictamenes_by_expediente(expediente_id: int, db: Session = Depends(get_d
 
 @router.post("/", response_model=DictamenResponse)
 def create_dictamen(
-    dictamen: DictamenCreate, 
-    tipo_dictamen: str = "aprobado", 
-    db: Session = Depends(get_db), 
+    dictamen: DictamenCreate,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Crea un nuevo dictamen.
-    
+    Crea un dictamen derivando el tipo del resultado de la evaluación.
+
     **Validaciones:**
-    - Solo coordinadores/administradores
-    - tipo_dictamen: SOLO "aprobado" o "observado" (no rechazado)
-    - Mínimo 2 evaluaciones completas
+    - Solo coordinadores/administradores.
+    - Requiere 1 evaluación completa con resultado.
+    - tipo_dictamen se deriva del resultado (no se pasa manual).
     """
     if current_user.rol not in [RolEnum.ADMINISTRADOR, RolEnum.COORDINADOR]:
         raise HTTPException(status_code=403, detail="Solo coordinadores pueden generar dictámenes")
-    
-    # Validar tipo de dictamen
-    if not validar_tipo_dictamen(tipo_dictamen):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"tipo_dictamen inválido. Permitidos: {', '.join(TIPOS_DICTAMEN_VALIDOS)}"
-        )
-    
+
     exp = db.query(Expediente).filter(Expediente.id == dictamen.expediente_id).first()
     if not exp:
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
-    
-    evaluaciones = db.query(Evaluacion).filter(
-        Evaluacion.expediente_id == dictamen.expediente_id, 
-        Evaluacion.completa == True
-    ).all()
-    
-    if len(evaluaciones) < 2:
-        raise HTTPException(status_code=400, detail="Se necesitan al menos 2 evaluaciones completas para generar dictamen")
-    
+
+    evaluacion = db.query(Evaluacion).filter(
+        Evaluacion.expediente_id == dictamen.expediente_id,
+        Evaluacion.completa == True,
+        Evaluacion.resultado != None,
+    ).first()
+
+    if not evaluacion:
+        raise HTTPException(status_code=400, detail="Se necesita una evaluación completa con resultado para generar el dictamen")
+
+    tipo = evaluacion.resultado
+    if tipo not in TIPOS_DICTAMEN_VALIDOS:
+        raise HTTPException(status_code=400, detail=f"Resultado de evaluación inválido: {tipo}")
+
     nuevo_dictamen = Dictamen(
         expediente_id=dictamen.expediente_id,
         contenido=dictamen.contenido,
-        tipo_dictamen=tipo_dictamen.lower(),
+        tipo_dictamen=tipo,
         numero_dictamen=generar_numero_dictamen(),
         fecha_emision=datetime.utcnow()
     )
@@ -141,39 +138,32 @@ def firmar_dictamen(
     if not dictamen.contenido:
         raise HTTPException(status_code=400, detail="El dictamen no tiene contenido")
     
-    # Solo generar PDF si es APROBADO
-    if dictamen.tipo_dictamen and dictamen.tipo_dictamen.lower() == "aprobado":
-        try:
-            exp = db.query(Expediente).filter(Expediente.id == dictamen.expediente_id).first()
-            if not exp:
-                raise HTTPException(status_code=404, detail="Expediente no encontrado")
-            
-            # Obtener investigadores
-            investigador = db.query(User).filter(User.id == exp.investigador_id).first()
-            nombres_investigadores = f"{investigador.nombre} {investigador.apellido}" if investigador else "No especificado"
-            
-            # Generar PDF
-            fecha_firma = datetime.utcnow()
-            pdf_path = generar_pdf_dictamen(
-                numero_dictamen=dictamen.numero_dictamen or "DICT-SIN-NUMERO",
-                titulo=exp.titulo_protocolo,
-                contenido=dictamen.contenido,
-                investigador_nombre=nombres_investigadores,
-                dictamen_fecha=fecha_firma
-            )
-            
-            # Guardar ruta en BD
-            dictamen.archivo_url = pdf_path
-            dictamen.fecha_firma = fecha_firma
-            dictamen.firmado = True
-            
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error generando PDF: {str(e)}")
-    else:
-        # Para OBSERVADO, solo marcar como firmado sin generar PDF
-        dictamen.fecha_firma = datetime.utcnow()
+    # Generar PDF del dictamen para los 3 resultados (aprobado / aprobado_observaciones / no_aprobado)
+    try:
+        exp = db.query(Expediente).filter(Expediente.id == dictamen.expediente_id).first()
+        if not exp:
+            raise HTTPException(status_code=404, detail="Expediente no encontrado")
+
+        investigador = db.query(User).filter(User.id == exp.investigador_id).first()
+        nombres_investigadores = f"{investigador.nombre} {investigador.apellido}" if investigador else "No especificado"
+
+        fecha_firma = datetime.utcnow()
+        pdf_path = generar_pdf_dictamen(
+            numero_dictamen=dictamen.numero_dictamen or "DICT-SIN-NUMERO",
+            titulo=exp.titulo_protocolo,
+            contenido=dictamen.contenido,
+            investigador_nombre=nombres_investigadores,
+            dictamen_fecha=fecha_firma
+        )
+
+        dictamen.archivo_url = pdf_path
+        dictamen.fecha_firma = fecha_firma
         dictamen.firmado = True
-    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generando PDF: {str(e)}")
+
     db.commit()
     db.refresh(dictamen)
     return dictamen

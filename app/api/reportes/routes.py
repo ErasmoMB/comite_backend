@@ -65,21 +65,21 @@ def reportes_carga_evaluadores(db: Session = Depends(get_db), current_user: User
 def reportes_resultados(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Reporta los dictamenes emitidos agrupados por tipo.
-    
-    **Solo retorna:** aprobado, observado (sin desaprobado/rechazado)
+
+    **Retorna:** aprobado, aprobado_observaciones, no_aprobado
     """
+    TIPOS_VALIDOS = ["aprobado", "aprobado_observaciones", "no_aprobado"]
     resultados = db.query(
         Dictamen.tipo_dictamen,
         func.count(Dictamen.id).label("total")
     ).filter(
-        Dictamen.tipo_dictamen.in_(["aprobado", "observado"])
+        Dictamen.tipo_dictamen.in_(TIPOS_VALIDOS)
     ).group_by(Dictamen.tipo_dictamen).all()
-    
+
     datos = []
     for r in resultados:
         tipo = r[0] if r[0] else "sin tipo"
-        # Filtrar tipos inválidos adicionales por si acaso
-        if tipo.lower() not in ["aprobado", "observado"]:
+        if tipo.lower() not in TIPOS_VALIDOS:
             continue
         datos.append(ReporteResultados(
             tipo=tipo,
