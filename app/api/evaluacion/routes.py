@@ -4,11 +4,20 @@ from typing import List
 from datetime import datetime
 
 from app.db.database import get_db
-from app.models import User, RolEnum, Expediente, Evaluacion, EstadoExpedienteEnum, Notificacion
-from app.schemas import EvaluacionCreate, EvaluacionResponse, EvaluacionUpdate, EvaluacionAsignarRequest
+from app.models import User, RolEnum, Expediente, Evaluacion, EvaluacionCriterio, EstadoExpedienteEnum, Notificacion, CRITERIOS_RUBRICA, PUNTAJE_TOTAL_MAX, CRITERIOS_MAX_POR_KEY, resultado_por_puntaje
+from app.schemas import EvaluacionCreate, EvaluacionResponse, EvaluacionUpdate, EvaluacionAsignarRequest, RubricaResponse, CriterioRubricaItem
 from app.api.auth.routes import get_current_user
 
 router = APIRouter()
+
+
+@router.get("/rubrica", response_model=RubricaResponse)
+def get_rubrica(current_user: User = Depends(get_current_user)):
+    return RubricaResponse(
+        criterios=[CriterioRubricaItem(**c) for c in CRITERIOS_RUBRICA],
+        puntaje_total_max=PUNTAJE_TOTAL_MAX,
+        umbrales={"aprobado": "17-20", "aprobado_observaciones": "13-16", "no_aprobado": "0-12"},
+    )
 
 @router.get("/", response_model=List[EvaluacionResponse])
 def get_evaluaciones(skip: int = 0, limit: int = 50, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -54,19 +63,42 @@ def update_evaluacion(evaluacion_id: int, eval_update: EvaluacionUpdate, db: Ses
         raise HTTPException(status_code=404, detail="Evaluación no encontrada")
     if evaluacion.evaluador_id != current_user.id and current_user.rol != RolEnum.ADMINISTRADOR:
         raise HTTPException(status_code=403, detail="No puedes modificar esta evaluación")
+
     if eval_update.nivel_riesgo is not None:
         evaluacion.nivel_riesgo = eval_update.nivel_riesgo
     if eval_update.recommendation is not None:
         evaluacion.recommendation = eval_update.recommendation
     if eval_update.observaciones is not None:
         evaluacion.observaciones = eval_update.observaciones
+
+    # Upsert de criterios (reemplaza los existentes por los enviados)
+    if eval_update.criterios is not None:
+        for c in eval_update.criterios:
+            if c.key not in CRITERIOS_MAX_POR_KEY:
+                raise HTTPException(status_code=400, detail=f"Criterio desconocido: {c.key}")
+            maximo = CRITERIOS_MAX_POR_KEY[c.key]
+            if c.puntaje < 0 or c.puntaje > maximo:
+                raise HTTPException(status_code=400, detail=f"Puntaje de '{c.key}' debe estar entre 0 y {maximo}")
+        evaluacion.criterios.clear()
+        for c in eval_update.criterios:
+            evaluacion.criterios.append(EvaluacionCriterio(criterio_key=c.key, puntaje=c.puntaje, observacion=c.observacion))
+
     if eval_update.completa is not None:
         evaluacion.completa = eval_update.completa
         if eval_update.completa:
+            keys_presentes = {c.criterio_key for c in evaluacion.criterios}
+            if keys_presentes != set(CRITERIOS_MAX_POR_KEY.keys()):
+                raise HTTPException(status_code=400, detail="Faltan criterios por evaluar (se requieren los 7)")
+            total = sum(c.puntaje for c in evaluacion.criterios)
+            evaluacion.puntaje_total = total
+            evaluacion.resultado = resultado_por_puntaje(total)
             evaluacion.fecha_envio = datetime.utcnow()
+            if evaluacion.expediente:
+                evaluacion.expediente.estado = evaluacion.resultado
+
     db.commit()
     db.refresh(evaluacion)
-    db.refresh(evaluacion, attribute_names=['expediente'])
+    db.refresh(evaluacion, attribute_names=['expediente', 'criterios'])
     return evaluacion
 
 @router.post("/{evaluacion_id}/conflicto")

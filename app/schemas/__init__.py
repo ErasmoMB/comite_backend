@@ -16,6 +16,20 @@ class UserCreate(UserBase):
     especialidad: Optional[str] = None
     carga_trabajo: Optional[int] = None
     conflicto_interes: bool = False
+    # Datos académicos del registro público (según rol)
+    codigo_estudiante: Optional[str] = None
+    laboratorio: Optional[str] = None
+
+class AdminUserCreate(BaseModel):
+    """Alta de usuario hecha por el administrador (cualquier rol, incl. internos)."""
+    email: EmailStr
+    password: str
+    nombre: str
+    apellido: str
+    rol: str
+    especialidad: Optional[str] = None
+    carga_trabajo: Optional[int] = None
+    conflicto_interes: bool = False
 
 class UserUpdate(BaseModel):
     nombre: Optional[str] = None
@@ -33,6 +47,8 @@ class UserResponse(BaseModel):
     especialidad: Optional[str] = None
     carga_trabajo: Optional[int] = None
     conflicto_interes: bool = False
+    codigo_estudiante: Optional[str] = None
+    laboratorio: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -57,14 +73,41 @@ class TokenData(BaseModel):
     user_id: Optional[int] = None
 
 
+class AutorBase(BaseModel):
+    apellidos_nombres: str
+    codigo_estudiante: Optional[str] = None
+    correo: Optional[str] = None
+    telefono: Optional[str] = None
+
+class AutorResponse(AutorBase):
+    id: int
+    orden: int
+    es_principal: bool
+
+    class Config:
+        from_attributes = True
+
+
 class ExpedienteBase(BaseModel):
     titulo_protocolo: str
-    tipo_tramite: Optional[str] = None
+    tipo_tramite: Optional[str] = "proyecto_nuevo"
     facultad: Optional[str] = None
     prioridad: Optional[str] = "normal"
+    # Flujo dinámico (Fase 1). modalidad se deriva del rol en el backend.
+    programa_estudios: Optional[str] = None
+    ciclo: Optional[str] = None
+    nivel_posgrado: Optional[str] = None
 
 class ExpedienteCreate(ExpedienteBase):
-    pass
+    autores: List[AutorBase] = []
+
+class CambioTituloCreate(BaseModel):
+    numero_acta: str
+    programa_estudios: str
+    ciclo: str
+    titulo_anterior: str
+    titulo_nuevo: str
+    autores: List[AutorBase] = []
 
 class ExpedienteUpdate(BaseModel):
     titulo_protocolo: Optional[str] = None
@@ -72,16 +115,22 @@ class ExpedienteUpdate(BaseModel):
     facultad: Optional[str] = None
     prioridad: Optional[str] = None
     estado: Optional[str] = None
+    programa_estudios: Optional[str] = None
+    ciclo: Optional[str] = None
+    nivel_posgrado: Optional[str] = None
+    autores: Optional[List[AutorBase]] = None
 
 class ExpedienteResponse(ExpedienteBase):
     id: int
     codigo_unico: Optional[str]
     investigador_id: int
-    tipo_tramite: Optional[str]
-    facultad: Optional[str]
-    prioridad: str
+    modalidad: Optional[str] = None
     estado: str
     fecha_envio: Optional[datetime]
+    numero_acta: Optional[str] = None
+    titulo_anterior: Optional[str] = None
+    titulo_nuevo: Optional[str] = None
+    autores: List[AutorResponse] = []
     created_at: datetime = Field(validation_alias="fecha_creacion")
 
     class Config:
@@ -104,6 +153,30 @@ class DocumentoResponse(DocumentoBase):
         from_attributes = True
 
 
+class CriterioRubricaItem(BaseModel):
+    key: str
+    nombre: str
+    descripcion: str
+    puntaje_max: int
+
+class RubricaResponse(BaseModel):
+    criterios: List[CriterioRubricaItem]
+    puntaje_total_max: int
+    umbrales: dict
+
+class CriterioEvaluacionInput(BaseModel):
+    key: str
+    puntaje: int
+    observacion: Optional[str] = None
+
+class CriterioEvaluacionResponse(BaseModel):
+    criterio_key: str
+    puntaje: int
+    observacion: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 class EvaluacionBase(BaseModel):
     pass
 
@@ -115,6 +188,7 @@ class EvaluacionUpdate(BaseModel):
     recommendation: Optional[str] = None
     observaciones: Optional[str] = None
     completa: Optional[bool] = None
+    criterios: Optional[List[CriterioEvaluacionInput]] = None
 
 class EvaluacionAsignarRequest(BaseModel):
     evaluador_id: int
@@ -129,6 +203,9 @@ class EvaluacionResponse(EvaluacionBase):
     completa: bool
     conflicto_interes: bool
     titulo_protocolo: Optional[str] = None
+    criterios: List[CriterioEvaluacionResponse] = []
+    puntaje_total: Optional[int] = None
+    resultado: Optional[str] = None
     created_at: datetime = Field(validation_alias="fecha_asignacion")
 
     class Config:
