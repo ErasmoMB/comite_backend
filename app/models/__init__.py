@@ -40,6 +40,8 @@ class EstadoExpedienteEnum(str, enum.Enum):
     EN_REVISION = "en_revision"
     SUBSANACION = "subsanacion"
     APROBADO = "aprobado"
+    APROBADO_OBSERVACIONES = "aprobado_observaciones"
+    NO_APROBADO = "no_aprobado"
     ARCHIVADO = "archivado"
 
 
@@ -167,9 +169,10 @@ DOCUMENTOS_REQUERIDOS = {
 }
 
 class TipoDictamenEnum(str, enum.Enum):
-    """Estados permitidos para dictamen: solo APROBADO u OBSERVADO"""
+    """Estados permitidos para dictamen: aprobado, aprobado con observaciones o no aprobado."""
     APROBADO = "aprobado"
-    OBSERVADO = "observado"
+    APROBADO_OBSERVACIONES = "aprobado_observaciones"
+    NO_APROBADO = "no_aprobado"
 
 class Configuracion(Base):
     """Configuración global del sistema en pares clave/valor (ej. fecha límite)."""
@@ -285,9 +288,12 @@ class Evaluacion(Base):
     conflicto_interes = Column(Boolean, default=False)
     fecha_asignacion = Column(DateTime, server_default=func.now())
     fecha_envio = Column(DateTime, nullable=True)
+    puntaje_total = Column(Integer, nullable=True)
+    resultado = Column(String(50), nullable=True)
 
     expediente = relationship("Expediente", back_populates="evaluaciones")
     evaluador = relationship("User", back_populates="evaluaciones")
+    criterios = relationship("EvaluacionCriterio", back_populates="evaluacion", cascade="all, delete-orphan")
 
     @property
     def titulo_protocolo(self):
@@ -295,6 +301,19 @@ class Evaluacion(Base):
         if self.expediente:
             return self.expediente.titulo_protocolo
         return None
+
+
+class EvaluacionCriterio(Base):
+    """Puntaje y observación de un criterio de la rúbrica para una evaluación."""
+    __tablename__ = "evaluacion_criterios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    evaluacion_id = Column(Integer, ForeignKey("evaluaciones.id"), nullable=False)
+    criterio_key = Column(String(50), nullable=False)
+    puntaje = Column(Integer, nullable=False, default=0)
+    observacion = Column(Text, nullable=True)
+
+    evaluacion = relationship("Evaluacion", back_populates="criterios")
 
 
 class Dictamen(Base):
