@@ -102,7 +102,6 @@ class ExpedienteCreate(ExpedienteBase):
 
 class CambioTituloCreate(BaseModel):
     proyecto_origen_id: int
-    numero_acta: str
     programa_estudios: str
     ciclo: str
     titulo_nuevo: str

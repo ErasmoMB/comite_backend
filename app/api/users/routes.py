@@ -3,11 +3,48 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.db.database import get_db
+from app.core.security import get_password_hash
 from app.models import User, RolEnum
-from app.schemas import UserResponse, UserUpdate
+from app.schemas import UserResponse, UserUpdate, AdminUserCreate
 from app.api.auth.routes import get_current_user
 
 router = APIRouter()
+
+
+@router.post("/", response_model=UserResponse, status_code=201)
+def create_user(
+    payload: AdminUserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Solo el administrador puede crear usuarios (incluidos los roles internos)."""
+    if current_user.rol != RolEnum.ADMINISTRADOR.value:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo el administrador puede crear usuarios.",
+        )
+
+    roles_validos = {r.value for r in RolEnum}
+    if payload.rol not in roles_validos:
+        raise HTTPException(status_code=400, detail="Rol no válido.")
+
+    if db.query(User).filter(User.email == payload.email).first():
+        raise HTTPException(status_code=400, detail="Email ya registrado")
+
+    new_user = User(
+        email=payload.email,
+        password_hash=get_password_hash(payload.password),
+        nombre=payload.nombre,
+        apellido=payload.apellido,
+        rol=payload.rol,
+        especialidad=payload.especialidad,
+        carga_trabajo=payload.carga_trabajo,
+        conflicto_interes=payload.conflicto_interes,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
 
 @router.get("/", response_model=List[UserResponse])
 def get_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

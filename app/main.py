@@ -29,6 +29,8 @@ from app.api.dictamen import routes as dictamen
 from app.api.notificaciones import routes as notificaciones
 from app.api.reportes import routes as reportes
 from app.api.ia import routes as ia
+from app.api.plantillas import routes as plantillas
+from app.api.config import routes as config
 
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
 app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["users"])
@@ -38,6 +40,8 @@ app.include_router(dictamen.router, prefix=f"{settings.API_V1_STR}/dictamen", ta
 app.include_router(notificaciones.router, prefix=f"{settings.API_V1_STR}/notificaciones", tags=["notificaciones"])
 app.include_router(reportes.router, prefix=f"{settings.API_V1_STR}/reportes", tags=["reportes"])
 app.include_router(ia.router, prefix=f"{settings.API_V1_STR}/ia", tags=["ia"])
+app.include_router(plantillas.router, prefix=f"{settings.API_V1_STR}/plantillas", tags=["plantillas"])
+app.include_router(config.router, prefix=f"{settings.API_V1_STR}/config", tags=["config"])
 
 @app.get("/")
 def root():

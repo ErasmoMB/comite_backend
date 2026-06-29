@@ -14,7 +14,6 @@ def _exp(db, user, estado, titulo="Proyecto X", tramite="proyecto_nuevo", codigo
 def _payload(origen_id, titulo_nuevo="Nuevo titulo del proyecto"):
     return {
         "proyecto_origen_id": origen_id,
-        "numero_acta": "ACTA-001",
         "programa_estudios": PROGRAMAS_ESTUDIOS[0],
         "ciclo": CICLOS_CAMBIO_TITULO[0],
         "titulo_nuevo": titulo_nuevo,
@@ -44,15 +43,16 @@ def test_cambio_titulo_rechaza_no_aprobado(client, db):
     assert resp.status_code == 400
 
 
-def test_cambio_titulo_ok_y_autollena_titulo_anterior(client, db):
+def test_cambio_titulo_ok_autollena_titulo_y_deriva_acta(client, db):
     u = make_user(db, "estudiante_pregrado")
-    origen = _exp(db, u, "aprobado", titulo="Titulo original aprobado", codigo="C1")
+    origen = _exp(db, u, "aprobado", titulo="Titulo original aprobado", codigo="1-2026")
     app.dependency_overrides[get_current_user] = auth_as(u)
     resp = client.post("/api/v1/expedientes/cambio-titulo", json=_payload(origen.id))
     assert resp.status_code == 200
     data = resp.json()
     assert data["titulo_anterior"] == "Titulo original aprobado"
     assert data["titulo_nuevo"] == "Nuevo titulo del proyecto"
+    assert data["numero_acta"] == "1"  # derivado del código "1-2026"
 
 
 def test_cambio_titulo_rechaza_proyecto_ajeno(client, db):

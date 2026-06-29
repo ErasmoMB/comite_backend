@@ -265,6 +265,9 @@ def create_cambio_titulo(payload: CambioTituloCreate, db: Session = Depends(get_
     if origen.estado not in ESTADOS_ELEGIBLE_CAMBIO_TITULO:
         raise HTTPException(status_code=400, detail="Solo puedes solicitar cambio de título de un proyecto aprobado.")
 
+    # El N° de acta se deriva del código del proyecto origen (ej. "1-2026" -> "1").
+    numero_acta = (origen.codigo_unico or "").split("-")[0] or None
+
     new_exp = Expediente(
         # El título del proyecto pasa a ser el nuevo título (para listados).
         titulo_protocolo=payload.titulo_nuevo,
@@ -272,7 +275,7 @@ def create_cambio_titulo(payload: CambioTituloCreate, db: Session = Depends(get_
         modalidad=modalidad,
         programa_estudios=payload.programa_estudios,
         ciclo=payload.ciclo,
-        numero_acta=payload.numero_acta,
+        numero_acta=numero_acta,
         titulo_anterior=origen.titulo_protocolo,  # autollenado desde el proyecto origen
         titulo_nuevo=payload.titulo_nuevo,
         proyecto_origen_id=origen.id,

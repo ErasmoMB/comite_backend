@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_token
 from app.core.config import settings
-from app.models import User
+from app.models import User, ROLES_AUTO_REGISTRO
 from app.schemas import Token, UserCreate, UserResponse, LoginRequest, LoginResponse
 
 router = APIRouter()
@@ -18,6 +18,15 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     if not email:
         raise HTTPException(status_code=400, detail="Email es requerido")
     
+    # Solo se permite auto-registrarse con los roles públicos.
+    # Los roles internos (administrador, coordinador, secretaria, evaluador)
+    # los crea únicamente el administrador vía POST /users.
+    if user.rol not in ROLES_AUTO_REGISTRO:
+        raise HTTPException(
+            status_code=403,
+            detail="Este rol no puede registrarse. Las credenciales de roles internos las crea el administrador.",
+        )
+
     db_user = db.query(User).filter(User.email == email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email ya registrado")
@@ -28,7 +37,16 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     
     if not nombre or not apellido:
         raise HTTPException(status_code=400, detail="Nombre y apellido son requeridos")
-    
+
+    # Validación de campos académicos según el rol:
+    #  - estudiantes (pregrado/postgrado): código de estudiante obligatorio
+    #  - investigador: laboratorio obligatorio
+    es_estudiante = user.rol in ("estudiante_pregrado", "estudiante_postgrado")
+    if es_estudiante and not (user.codigo_estudiante or "").strip():
+        raise HTTPException(status_code=400, detail="El código de estudiante es obligatorio.")
+    if user.rol == "investigador" and not (user.laboratorio or "").strip():
+        raise HTTPException(status_code=400, detail="El laboratorio es obligatorio.")
+
     new_user = User(
         email=email,
         password_hash=hashed_password,
@@ -37,7 +55,10 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         rol=user.rol,
         especialidad=user.especialidad,
         carga_trabajo=user.carga_trabajo,
-        conflicto_interes=user.conflicto_interes
+        conflicto_interes=user.conflicto_interes,
+        # Solo se guarda el dato correspondiente al rol elegido.
+        codigo_estudiante=user.codigo_estudiante if es_estudiante else None,
+        laboratorio=user.laboratorio if user.rol == "investigador" else None,
     )
     db.add(new_user)
     db.commit()
@@ -53,6 +74,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Credenciales incorrectas",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if not user.activo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cuenta desactivada. Contacta al administrador.",
+        )
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(user.id)}, expires_delta=access_token_expires
@@ -61,7 +87,12 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 
 REDIRECT_BY_ROLE = {
+    # Los 3 roles auto-registrables comparten la misma vista funcional.
     "investigador": "/investigador/dashboard",
+    "estudiante_pregrado": "/investigador/dashboard",
+    "estudiante_postgrado": "/investigador/dashboard",
+    "estudiante": "/investigador/dashboard",  # legado
+    # Roles internos: cada uno a su vista.
     "secretaria": "/secretaria/bandeja",
     "coordinador": "/coordinador/dashboard",
     "evaluador": "/evaluador/bandeja",
@@ -80,6 +111,11 @@ def login_json(login_req: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas",
+        )
+    if not user.activo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cuenta desactivada. Contacta al administrador.",
         )
     redirect_to = REDIRECT_BY_ROLE.get(user.rol, "/")
     return {"usuario": user, "redirectTo": redirect_to}
