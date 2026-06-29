@@ -101,10 +101,10 @@ class ExpedienteCreate(ExpedienteBase):
     autores: List[AutorBase] = []
 
 class CambioTituloCreate(BaseModel):
+    proyecto_origen_id: int
     numero_acta: str
     programa_estudios: str
     ciclo: str
-    titulo_anterior: str
     titulo_nuevo: str
     autores: List[AutorBase] = []
 

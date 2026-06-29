@@ -14,6 +14,7 @@ from app.models import (
     ROL_A_MODALIDAD, PROGRAMAS_ESTUDIOS, CICLOS, CICLOS_CAMBIO_TITULO, NIVELES_POSGRADO,
     DOCUMENTOS_REQUERIDOS, DOCUMENTO_LABELS, DOCUMENTO_FORMATOS, ModalidadEnum, TipoTramiteEnum,
     DOCUMENTO_INDICACIONES, DOCUMENTO_PLANTILLA, GUIA_NOMBRES, DOC_SOLICITUD_CAMBIO_TITULO,
+    ESTADOS_ELEGIBLE_CAMBIO_TITULO,
 )
 
 
@@ -175,6 +176,21 @@ def get_requisitos(expediente_id: int, db: Session = Depends(get_db), current_us
     return {"completo": len(faltantes) == 0, "faltantes": faltantes, "documentos_requeridos": requeridos}
 
 
+@router.get("/elegibles-cambio-titulo")
+def get_proyectos_elegibles_cambio_titulo(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Proyectos del usuario que pueden solicitar cambio de título: solo los
+    ya aprobados (con o sin observaciones)."""
+    proyectos = db.query(Expediente).filter(
+        Expediente.investigador_id == current_user.id,
+        Expediente.estado.in_(ESTADOS_ELEGIBLE_CAMBIO_TITULO),
+        Expediente.tipo_tramite != TipoTramiteEnum.CAMBIO_TITULO.value,
+    ).all()
+    return [
+        {"id": p.id, "codigo": p.codigo_unico, "titulo": p.titulo_protocolo, "estado": p.estado}
+        for p in proyectos
+    ]
+
+
 @router.get("/{expediente_id}", response_model=ExpedienteResponse)
 def get_expediente(expediente_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
@@ -242,6 +258,13 @@ def create_cambio_titulo(payload: CambioTituloCreate, db: Session = Depends(get_
     if payload.ciclo not in CICLOS_CAMBIO_TITULO:
         raise HTTPException(status_code=400, detail="Ciclo no válido.")
 
+    # El proyecto origen debe ser del usuario y estar aprobado (con o sin observaciones).
+    origen = db.query(Expediente).filter(Expediente.id == payload.proyecto_origen_id).first()
+    if not origen or origen.investigador_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Proyecto de origen no encontrado.")
+    if origen.estado not in ESTADOS_ELEGIBLE_CAMBIO_TITULO:
+        raise HTTPException(status_code=400, detail="Solo puedes solicitar cambio de título de un proyecto aprobado.")
+
     new_exp = Expediente(
         # El título del proyecto pasa a ser el nuevo título (para listados).
         titulo_protocolo=payload.titulo_nuevo,
@@ -250,8 +273,9 @@ def create_cambio_titulo(payload: CambioTituloCreate, db: Session = Depends(get_
         programa_estudios=payload.programa_estudios,
         ciclo=payload.ciclo,
         numero_acta=payload.numero_acta,
-        titulo_anterior=payload.titulo_anterior,
+        titulo_anterior=origen.titulo_protocolo,  # autollenado desde el proyecto origen
         titulo_nuevo=payload.titulo_nuevo,
+        proyecto_origen_id=origen.id,
         investigador_id=current_user.id,
         estado=EstadoExpedienteEnum.BORRADOR,
         codigo_unico=None,

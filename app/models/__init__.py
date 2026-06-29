@@ -227,6 +227,7 @@ class Expediente(Base):
     numero_acta = Column(String(50), nullable=True)
     titulo_anterior = Column(Text, nullable=True)
     titulo_nuevo = Column(Text, nullable=True)
+    proyecto_origen_id = Column(Integer, ForeignKey("expedientes.id"), nullable=True)  # proyecto aprobado al que aplica el cambio
     estado = Column(String(50), default="borrador")
     fecha_envio = Column(DateTime, nullable=True)
     fecha_creacion = Column(DateTime, server_default=func.now())
@@ -408,3 +409,11 @@ def resultado_por_puntaje(total: int) -> str:
     if total >= 13:
         return "aprobado_observaciones"
     return "no_aprobado"
+
+
+# Un proyecto solo puede solicitar cambio de título si ya fue aprobado
+# (con o sin observaciones). Regla confirmada por el Comité.
+ESTADOS_ELEGIBLE_CAMBIO_TITULO = [
+    EstadoExpedienteEnum.APROBADO.value,
+    EstadoExpedienteEnum.APROBADO_OBSERVACIONES.value,
+]
