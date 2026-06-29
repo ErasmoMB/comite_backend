@@ -301,6 +301,21 @@ class Evaluacion(Base):
             return self.expediente.titulo_protocolo
         return None
 
+    @property
+    def investigador_nombre(self):
+        """Nombre completo del solicitante del expediente asociado."""
+        if self.expediente and self.expediente.investigador:
+            inv = self.expediente.investigador
+            return f"{inv.nombre} {inv.apellido}".strip()
+        return None
+
+    @property
+    def expediente_fecha_envio(self):
+        """Fecha de envío del expediente asociado (distinta de la fecha de envío de la evaluación)."""
+        if self.expediente:
+            return self.expediente.fecha_envio
+        return None
+
 
 class EvaluacionCriterio(Base):
     """Puntaje y observación de un criterio de la rúbrica para una evaluación."""

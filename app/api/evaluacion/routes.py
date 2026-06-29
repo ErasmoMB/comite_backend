@@ -22,18 +22,18 @@ def get_rubrica(current_user: User = Depends(get_current_user)):
 @router.get("/", response_model=List[EvaluacionResponse])
 def get_evaluaciones(skip: int = 0, limit: int = 50, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.rol == RolEnum.EVALUADOR:
-        return db.query(Evaluacion).options(joinedload(Evaluacion.expediente)).filter(Evaluacion.evaluador_id == current_user.id).offset(skip).limit(limit).all()
-    return db.query(Evaluacion).options(joinedload(Evaluacion.expediente)).offset(skip).limit(limit).all()
+        return db.query(Evaluacion).options(joinedload(Evaluacion.expediente).joinedload(Expediente.investigador)).filter(Evaluacion.evaluador_id == current_user.id).offset(skip).limit(limit).all()
+    return db.query(Evaluacion).options(joinedload(Evaluacion.expediente).joinedload(Expediente.investigador)).offset(skip).limit(limit).all()
 
 @router.get("/mis-evaluaciones", response_model=List[EvaluacionResponse])
 def get_my_evaluaciones(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.rol != RolEnum.EVALUADOR:
         raise HTTPException(status_code=403, detail="Solo evaluadores")
-    return db.query(Evaluacion).options(joinedload(Evaluacion.expediente)).filter(Evaluacion.evaluador_id == current_user.id).all()
+    return db.query(Evaluacion).options(joinedload(Evaluacion.expediente).joinedload(Expediente.investigador)).filter(Evaluacion.evaluador_id == current_user.id).all()
 
 @router.get("/{evaluacion_id}", response_model=EvaluacionResponse)
 def get_evaluacion(evaluacion_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    evaluacion = db.query(Evaluacion).options(joinedload(Evaluacion.expediente)).filter(Evaluacion.id == evaluacion_id).first()
+    evaluacion = db.query(Evaluacion).options(joinedload(Evaluacion.expediente).joinedload(Expediente.investigador)).filter(Evaluacion.id == evaluacion_id).first()
     if not evaluacion:
         raise HTTPException(status_code=404, detail="Evaluación no encontrada")
     return evaluacion
@@ -58,7 +58,7 @@ def create_evaluacion(evaluacion: EvaluacionCreate, db: Session = Depends(get_db
 
 @router.put("/{evaluacion_id}", response_model=EvaluacionResponse)
 def update_evaluacion(evaluacion_id: int, eval_update: EvaluacionUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    evaluacion = db.query(Evaluacion).options(joinedload(Evaluacion.expediente)).filter(Evaluacion.id == evaluacion_id).first()
+    evaluacion = db.query(Evaluacion).options(joinedload(Evaluacion.expediente).joinedload(Expediente.investigador)).filter(Evaluacion.id == evaluacion_id).first()
     if not evaluacion:
         raise HTTPException(status_code=404, detail="Evaluación no encontrada")
     if evaluacion.evaluador_id != current_user.id and current_user.rol != RolEnum.ADMINISTRADOR:

@@ -198,6 +198,8 @@ class EvaluacionResponse(EvaluacionBase):
     completa: bool
     conflicto_interes: bool
     titulo_protocolo: Optional[str] = None
+    investigador_nombre: Optional[str] = None
+    expediente_fecha_envio: Optional[datetime] = None
     criterios: List[CriterioEvaluacionResponse] = []
     puntaje_total: Optional[int] = None
     resultado: Optional[str] = None
