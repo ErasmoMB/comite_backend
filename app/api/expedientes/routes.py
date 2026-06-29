@@ -186,7 +186,22 @@ def get_proyectos_elegibles_cambio_titulo(db: Session = Depends(get_db), current
         Expediente.tipo_tramite != TipoTramiteEnum.CAMBIO_TITULO.value,
     ).all()
     return [
-        {"id": p.id, "codigo": p.codigo_unico, "titulo": p.titulo_protocolo, "estado": p.estado}
+        {
+            "id": p.id,
+            "codigo": p.codigo_unico,
+            "titulo": p.titulo_protocolo,
+            "estado": p.estado,
+            "programa_estudios": p.programa_estudios,
+            "ciclo": p.ciclo,
+            "autores": [
+                {
+                    "apellidos_nombres": a.apellidos_nombres,
+                    "codigo_estudiante": a.codigo_estudiante or "",
+                    "correo": a.correo or "",
+                }
+                for a in sorted(p.autores, key=lambda x: x.orden or 1)
+            ],
+        }
         for p in proyectos
     ]
 
