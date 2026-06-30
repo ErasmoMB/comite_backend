@@ -44,10 +44,10 @@ def create_evaluacion(evaluacion: EvaluacionCreate, db: Session = Depends(get_db
         raise HTTPException(status_code=403, detail="Solo coordinadores pueden crear evaluaciones")
     exp = db.query(Expediente).filter(Expediente.id == evaluacion.expediente_id).first()
     if not exp:
-        raise HTTPException(status_code=404, detalle="Expediente no encontrado")
+        raise HTTPException(status_code=404, detail="Expediente no encontrado")
     existentes = db.query(Evaluacion).filter(Evaluacion.expediente_id == evaluacion.expediente_id).all()
-    if len(existentes) >= 2:
-        raise HTTPException(status_code=400, detail="Ya hay 2 evaluadores asignados")
+    if len(existentes) >= 1:
+        raise HTTPException(status_code=400, detail="Este expediente ya tiene un evaluador asignado")
     nueva_eval = Evaluacion(expediente_id=evaluacion.expediente_id, evaluador_id=current_user.id)
     db.add(nueva_eval)
     db.commit()
@@ -164,10 +164,10 @@ def asignar_evaluador_manual(
     if evaluacion_existente:
         raise HTTPException(status_code=400, detail="Este evaluador ya está asignado a este expediente")
     
-    # Verificar que no haya más de 2 evaluadores
+    # Un solo evaluador por expediente (modelo de evaluación única con rúbrica).
     evaluadores_actuales = db.query(Evaluacion).filter(Evaluacion.expediente_id == expediente_id).all()
-    if len(evaluadores_actuales) >= 2:
-        raise HTTPException(status_code=400, detail="Ya hay 2 evaluadores máximo asignados a este expediente")
+    if len(evaluadores_actuales) >= 1:
+        raise HTTPException(status_code=400, detail="Este expediente ya tiene un evaluador asignado")
     
     # Crear nueva evaluación
     nueva_evaluacion = Evaluacion(
