@@ -31,6 +31,7 @@ from app.api.reportes import routes as reportes
 from app.api.ia import routes as ia
 from app.api.plantillas import routes as plantillas
 from app.api.config import routes as config
+from app.api.chat import routes as chat
 
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
 app.include_router(users.router, prefix=f"{settings.API_V1_STR}/users", tags=["users"])
@@ -42,6 +43,7 @@ app.include_router(reportes.router, prefix=f"{settings.API_V1_STR}/reportes", ta
 app.include_router(ia.router, prefix=f"{settings.API_V1_STR}/ia", tags=["ia"])
 app.include_router(plantillas.router, prefix=f"{settings.API_V1_STR}/plantillas", tags=["plantillas"])
 app.include_router(config.router, prefix=f"{settings.API_V1_STR}/config", tags=["config"])
+app.include_router(chat.router, prefix=f"{settings.API_V1_STR}/chat", tags=["chat"])
 
 @app.get("/")
 def root():
