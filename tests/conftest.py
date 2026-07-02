@@ -1,6 +1,9 @@
 import os
 # Forzar SQLite en memoria ANTES de importar la app (evita conectar a Aiven).
 os.environ["DATABASE_URL"] = "sqlite://"
+# Permiso explícito para SQLite: los tests son el único contexto donde se admite
+# (el candado en app/db/database.py bloquea SQLite en cualquier otro arranque).
+os.environ["ALLOW_SQLITE"] = "1"
 
 import pytest
 from fastapi.testclient import TestClient
