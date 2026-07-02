@@ -129,6 +129,9 @@ class ExpedienteResponse(ExpedienteBase):
     titulo_anterior: Optional[str] = None
     titulo_nuevo: Optional[str] = None
     autores: List[AutorResponse] = []
+    evaluacion_rubrica_url: Optional[str] = None
+    evaluacion_dictamen_url: Optional[str] = None
+    evaluacion_resultado: Optional[str] = None
     created_at: datetime = Field(validation_alias="fecha_creacion")
 
     class Config:
@@ -196,14 +199,16 @@ class EvaluacionResponse(EvaluacionBase):
     evaluador_id: int
     recommendation: Optional[str]
     observaciones: Optional[str]
-    completa: bool
-    conflicto_interes: bool
+    completa: Optional[bool] = False
+    conflicto_interes: Optional[bool] = False
     titulo_protocolo: Optional[str] = None
     investigador_nombre: Optional[str] = None
     expediente_fecha_envio: Optional[datetime] = None
     criterios: List[CriterioEvaluacionResponse] = []
     puntaje_total: Optional[int] = None
     resultado: Optional[str] = None
+    rubrica_pdf_url: Optional[str] = None
+    dictamen_pdf_url: Optional[str] = None
     created_at: datetime = Field(validation_alias="fecha_asignacion")
 
     class Config:
@@ -254,6 +259,45 @@ class NotificacionResponse(NotificacionBase):
 
     class Config:
         from_attributes = True
+
+
+# ==================== CHAT SOLICITANTE-SECRETARÍA ====================
+class MensajeChatCreate(BaseModel):
+    texto: str
+
+
+class MensajeChatResponse(BaseModel):
+    id: int
+    solicitante_id: int
+    autor_id: int
+    texto: str
+    leido: bool
+    es_de_secretaria: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ConversacionResumen(BaseModel):
+    """Item de la bandeja de secretaría: una conversación por solicitante."""
+    solicitante_id: int
+    nombre: str
+    rol: str
+    email: str
+    codigo_estudiante: Optional[str] = None
+    ultimo_mensaje: str
+    ultima_fecha: datetime
+    no_leidos: int
+
+
+class SolicitanteChatItem(BaseModel):
+    """Solicitante elegible para iniciar una conversación."""
+    id: int
+    nombre: str
+    rol: str
+    email: str
+    codigo_estudiante: Optional[str] = None
 
 
 # ==================== SUBSANACIÓN ====================

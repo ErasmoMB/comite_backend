@@ -249,6 +249,30 @@ class Expediente(Base):
             return f"{self.investigador.nombre} {self.investigador.apellido}".strip()
         return None
 
+    @property
+    def evaluacion_rubrica_url(self):
+        """URL del PDF de rúbrica de la última evaluación completada."""
+        completadas = [e for e in self.evaluaciones if e.completa and e.rubrica_pdf_path]
+        if completadas:
+            return max(completadas, key=lambda e: e.fecha_envio or e.fecha_asignacion).rubrica_pdf_path
+        return None
+
+    @property
+    def evaluacion_dictamen_url(self):
+        """URL del PDF de dictamen de la última evaluación completada."""
+        completadas = [e for e in self.evaluaciones if e.completa and e.dictamen_pdf_path]
+        if completadas:
+            return max(completadas, key=lambda e: e.fecha_envio or e.fecha_asignacion).dictamen_pdf_path
+        return None
+
+    @property
+    def evaluacion_resultado(self):
+        """Resultado de la última evaluación completada."""
+        completadas = [e for e in self.evaluaciones if e.completa and e.resultado]
+        if completadas:
+            return max(completadas, key=lambda e: e.fecha_envio or e.fecha_asignacion).resultado
+        return None
+
 
 class AutorExpediente(Base):
     """Integrantes del proyecto. El primero (orden=1) es el responsable/principal."""
@@ -296,6 +320,8 @@ class Evaluacion(Base):
     fecha_envio = Column(DateTime, nullable=True)
     puntaje_total = Column(Integer, nullable=True)
     resultado = Column(String(50), nullable=True)
+    rubrica_pdf_path = Column(String(500), nullable=True)
+    dictamen_pdf_path = Column(String(500), nullable=True)
 
     expediente = relationship("Expediente", back_populates="evaluaciones")
     evaluador = relationship("User", back_populates="evaluaciones")
@@ -322,6 +348,16 @@ class Evaluacion(Base):
         if self.expediente:
             return self.expediente.fecha_envio
         return None
+
+    @property
+    def rubrica_pdf_url(self):
+        """URL/path para descargar el PDF de rúbrica."""
+        return self.rubrica_pdf_path
+
+    @property
+    def dictamen_pdf_url(self):
+        """URL/path para descargar el PDF de dictamen."""
+        return self.dictamen_pdf_path
 
 
 class EvaluacionCriterio(Base):
@@ -367,6 +403,31 @@ class Notificacion(Base):
 
     usuario = relationship("User", back_populates="notificaciones")
     expediente = relationship("Expediente", back_populates="notificaciones")
+
+
+class MensajeChat(Base):
+    """Mensaje del chat 1-a-1 entre un solicitante y la Secretaría (bandeja compartida).
+
+    El hilo se identifica por `solicitante_id` (un hilo por persona). Si
+    `autor_id == solicitante_id` escribió el solicitante; si no, escribió una
+    secretaria. `leido` = leído por el destinatario (se marca al abrir el hilo).
+    """
+    __tablename__ = "mensajes_chat"
+
+    id = Column(Integer, primary_key=True, index=True)
+    solicitante_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    autor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    texto = Column(Text, nullable=False)
+    leido = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    solicitante = relationship("User", foreign_keys=[solicitante_id])
+    autor = relationship("User", foreign_keys=[autor_id])
+
+    @property
+    def es_de_secretaria(self):
+        """True si el mensaje lo escribió la secretaría (no el solicitante)."""
+        return self.autor_id != self.solicitante_id
 
 
 class Bitacora(Base):

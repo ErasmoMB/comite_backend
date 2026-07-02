@@ -1,14 +1,85 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 from datetime import datetime
+from pathlib import Path
 
 from app.db.database import get_db
-from app.models import User, RolEnum, Expediente, Evaluacion, EvaluacionCriterio, EstadoExpedienteEnum, Notificacion, CRITERIOS_RUBRICA, PUNTAJE_TOTAL_MAX, CRITERIOS_MAX_POR_KEY, resultado_por_puntaje
+from app.models import User, RolEnum, Expediente, Evaluacion, EvaluacionCriterio, AutorExpediente, EstadoExpedienteEnum, Notificacion, CRITERIOS_RUBRICA, PUNTAJE_TOTAL_MAX, CRITERIOS_MAX_POR_KEY, resultado_por_puntaje
 from app.schemas import EvaluacionCreate, EvaluacionResponse, EvaluacionUpdate, EvaluacionAsignarRequest, RubricaResponse, CriterioRubricaItem
 from app.api.auth.routes import get_current_user
+from app.utils.pdf_generator import guardar_pdf_evaluacion
+from app.utils.email_service import enviar_email
 
 router = APIRouter()
+
+
+def _generar_dictamen_para_evaluacion(db: Session, evaluacion: Evaluacion) -> str | None:
+    """Genera el PDF de dictamen para una evaluación aprobada."""
+    from datetime import datetime
+    from app.utils.pdf_generator import generar_pdf_dictamen
+
+    expediente = db.query(Expediente).options(
+        joinedload(Expediente.investigador)
+    ).filter(Expediente.id == evaluacion.expediente_id).first()
+    if not expediente:
+        return None
+
+    resultado_label = {
+        "aprobado": "Aprobado",
+        "aprobado_observaciones": "Aprobado con observaciones",
+    }.get(evaluacion.resultado, "Aprobado")
+
+    numero = f"DIC-{(expediente.codigo_unico or str(expediente.id)).replace('/', '-')}"
+    fecha = datetime.now().strftime("%d/%m/%Y")
+    inv_nombre = expediente.investigador_nombre or ""
+
+    contenido = (
+        f"El Comité de Ética en Investigación, después de evaluar el proyecto "
+        f"titulado \"{expediente.titulo_protocolo}\", ha determinado que el mismo "
+        f"se encuentra {resultado_label.lower()}.\n\n"
+        f"Puntaje obtenido: {evaluacion.puntaje_total}/20.\n\n"
+        f"Observaciones: {evaluacion.observaciones or 'Ninguna.'}"
+    )
+
+    pdf_url = generar_pdf_dictamen(numero, expediente.titulo_protocolo or "", contenido, inv_nombre, fecha)
+    if pdf_url and not pdf_url.startswith("http"):
+        return pdf_url
+    return pdf_url
+
+
+def _generar_pdf_para_evaluacion(db: Session, evaluacion: Evaluacion) -> str | None:
+    """Genera el PDF de evaluación y devuelve la ruta del archivo."""
+    from app.models import CRITERIOS_RUBRICA as _CR
+
+    expediente = db.query(Expediente).options(
+        joinedload(Expediente.investigador)
+    ).filter(Expediente.id == evaluacion.expediente_id).first()
+
+    evaluador = db.query(User).filter(User.id == evaluacion.evaluador_id).first()
+
+    autores = db.query(AutorExpediente).filter(
+        AutorExpediente.expediente_id == evaluacion.expediente_id
+    ).order_by(AutorExpediente.orden).all()
+
+    # rebuild criterios with full metadata
+    criterios_con_puntajes = []
+    for idx, c in enumerate(_CR):
+        match = [ec for ec in evaluacion.criterios if ec.criterio_key == c["key"]]
+        puntaje = match[0].puntaje if match else 0
+        obs = match[0].observacion if match else ""
+        criterios_con_puntajes.append({
+            **c,
+            "puntaje": puntaje,
+            "observacion": obs,
+            "orden": idx,
+        })
+
+    return guardar_pdf_evaluacion(
+        evaluacion, expediente, evaluador,
+        autores, criterios_con_puntajes,
+    )
 
 
 @router.get("/rubrica", response_model=RubricaResponse)
@@ -58,7 +129,10 @@ def create_evaluacion(evaluacion: EvaluacionCreate, db: Session = Depends(get_db
 
 @router.put("/{evaluacion_id}", response_model=EvaluacionResponse)
 def update_evaluacion(evaluacion_id: int, eval_update: EvaluacionUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    evaluacion = db.query(Evaluacion).options(joinedload(Evaluacion.expediente).joinedload(Expediente.investigador)).filter(Evaluacion.id == evaluacion_id).first()
+    evaluacion = db.query(Evaluacion).options(
+        joinedload(Evaluacion.expediente).joinedload(Expediente.investigador),
+        joinedload(Evaluacion.criterios),
+    ).filter(Evaluacion.id == evaluacion_id).first()
     if not evaluacion:
         raise HTTPException(status_code=404, detail="Evaluación no encontrada")
     if evaluacion.evaluador_id != current_user.id and current_user.rol != RolEnum.ADMINISTRADOR:
@@ -97,7 +171,142 @@ def update_evaluacion(evaluacion_id: int, eval_update: EvaluacionUpdate, db: Ses
     db.commit()
     db.refresh(evaluacion)
     db.refresh(evaluacion, attribute_names=['expediente', 'criterios'])
+
+    # --- Post-submission: Generate PDFs and send emails ---
+    ya_fue_enviada = evaluacion.completa and bool(evaluacion.resultado)
+    if ya_fue_enviada:
+        try:
+            # Generar PDFs según resultado:
+            #   aprobado              → dictamen solamente
+            #   aprobado_observaciones → informe (rúbrica) + dictamen
+            #   no_aprobado           → informe (rúbrica) solamente
+            if evaluacion.resultado in ("aprobado_observaciones", "no_aprobado"):
+                pdf_path = _generar_pdf_para_evaluacion(db, evaluacion)
+                if pdf_path:
+                    evaluacion.rubrica_pdf_path = pdf_path
+
+            if evaluacion.resultado in ("aprobado", "aprobado_observaciones"):
+                dictamen_path = _generar_dictamen_para_evaluacion(db, evaluacion)
+                if dictamen_path:
+                    evaluacion.dictamen_pdf_path = dictamen_path
+
+            db.commit()
+
+            # Email a autores
+            expediente = evaluacion.expediente
+            autores = db.query(AutorExpediente).filter(
+                AutorExpediente.expediente_id == expediente.id
+            ).order_by(AutorExpediente.orden).all()
+
+            autor_emails = [a.correo for a in autores if a.correo]
+            if not autor_emails and expediente.investigador:
+                autor_emails = [expediente.investigador.email]
+
+            if autor_emails:
+                resultado_label = {
+                    "aprobado": "Aprobado",
+                    "aprobado_observaciones": "Aprobado con observaciones",
+                    "no_aprobado": "No aprobado",
+                }.get(evaluacion.resultado, evaluacion.resultado)
+
+                subject = f"Resultado de evaluación - {expediente.codigo_unico or ''}"
+                if evaluacion.resultado == "no_aprobado":
+                    body = (
+                        f"Estimado(a) investigador(a),\n\n"
+                        f"Se ha completado la evaluación ética de su proyecto:\n"
+                        f"  Título: {expediente.titulo_protocolo}\n"
+                        f"  Código: {expediente.codigo_unico or ''}\n"
+                        f"  Resultado: {resultado_label}\n"
+                        f"  Puntaje: {evaluacion.puntaje_total}/20\n\n"
+                        f"Adjunto encontrará la rúbrica de evaluación.\n\n"
+                        f"Saludos cordiales,\nComité de Ética en Investigación"
+                    )
+                elif evaluacion.resultado == "aprobado":
+                    body = (
+                        f"Estimado(a) investigador(a),\n\n"
+                        f"Se ha completado la evaluación ética de su proyecto:\n"
+                        f"  Título: {expediente.titulo_protocolo}\n"
+                        f"  Código: {expediente.codigo_unico or ''}\n"
+                        f"  Resultado: {resultado_label}\n"
+                        f"  Puntaje: {evaluacion.puntaje_total}/20\n\n"
+                        f"Adjunto encontrará el dictamen de aprobación.\n\n"
+                        f"Saludos cordiales,\nComité de Ética en Investigación"
+                    )
+                else:
+                    body = (
+                        f"Estimado(a) investigador(a),\n\n"
+                        f"Se ha completado la evaluación ética de su proyecto:\n"
+                        f"  Título: {expediente.titulo_protocolo}\n"
+                        f"  Código: {expediente.codigo_unico or ''}\n"
+                        f"  Resultado: {resultado_label}\n"
+                        f"  Puntaje: {evaluacion.puntaje_total}/20\n\n"
+                        f"Adjunto encontrará la rúbrica de evaluación y el dictamen correspondiente.\n\n"
+                        f"Saludos cordiales,\nComité de Ética en Investigación"
+                    )
+
+                pdf_paths = []
+                if evaluacion.rubrica_pdf_path:
+                    pdf_paths.append(evaluacion.rubrica_pdf_path)
+                if evaluacion.dictamen_pdf_path:
+                    pdf_paths.append(evaluacion.dictamen_pdf_path)
+                enviar_email(autor_emails, subject, body, pdf_paths)
+
+        except Exception as e:
+            import traceback
+            error_msg = f"Error en post-evaluacion: {e}\n{traceback.format_exc()}"
+            print(error_msg, flush=True)
+
     return evaluacion
+
+@router.get("/{evaluacion_id}/descargar-rubrica")
+def descargar_rubrica(
+    evaluacion_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Descargar el PDF de rúbrica de una evaluación."""
+    evaluacion = db.query(Evaluacion).filter(Evaluacion.id == evaluacion_id).first()
+    if not evaluacion:
+        raise HTTPException(status_code=404, detail="Evaluación no encontrada")
+
+    if not evaluacion.rubrica_pdf_path:
+        raise HTTPException(status_code=404, detail="La rúbrica PDF aún no ha sido generada. Debes enviar la evaluación primero.")
+
+    pdf_path = Path(evaluacion.rubrica_pdf_path)
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="El archivo PDF de rúbrica no se encuentra en el servidor.")
+
+    return FileResponse(
+        path=str(pdf_path),
+        media_type="application/pdf",
+        filename=pdf_path.name,
+    )
+
+
+@router.get("/{evaluacion_id}/descargar-dictamen")
+def descargar_dictamen(
+    evaluacion_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Descargar el PDF de dictamen de una evaluación."""
+    evaluacion = db.query(Evaluacion).filter(Evaluacion.id == evaluacion_id).first()
+    if not evaluacion:
+        raise HTTPException(status_code=404, detail="Evaluación no encontrada")
+
+    if not evaluacion.dictamen_pdf_path:
+        raise HTTPException(status_code=404, detail="El dictamen PDF aún no ha sido generado. Solo se genera para evaluaciones aprobadas.")
+
+    pdf_path = Path(evaluacion.dictamen_pdf_path)
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="El archivo PDF de dictamen no se encuentra en el servidor.")
+
+    return FileResponse(
+        path=str(pdf_path),
+        media_type="application/pdf",
+        filename=pdf_path.name,
+    )
+
 
 @router.post("/{evaluacion_id}/conflicto")
 def declarar_conflicto(evaluacion_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

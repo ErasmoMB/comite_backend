@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from datetime import datetime
 import uuid
+from pathlib import Path
 
 from app.db.database import get_db
 from app.models import (
@@ -215,6 +216,35 @@ def get_expediente(expediente_id: int, db: Session = Depends(get_db), current_us
     if current_user.rol in ROL_A_MODALIDAD and exp.investigador_id != current_user.id:
         raise HTTPException(status_code=403, detail="No tienes acceso a este expediente")
     return exp
+
+
+@router.get("/{expediente_id}/descargar-evaluacion/{tipo}")
+def descargar_evaluacion_pdf(
+    expediente_id: int,
+    tipo: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Descargar PDF de informe o dictamen de la evaluación del expediente."""
+    if tipo not in ("informe", "dictamen"):
+        raise HTTPException(status_code=400, detail="Tipo debe ser 'informe' o 'dictamen'")
+
+    exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
+    if not exp:
+        raise HTTPException(status_code=404, detail="Expediente no encontrado")
+
+    completadas = [e for e in exp.evaluaciones if e.completa and (e.rubrica_pdf_path if tipo == "informe" else e.dictamen_pdf_path)]
+    if not completadas:
+        raise HTTPException(status_code=404, detail=f"No hay evaluación completada con {tipo} PDF disponible")
+
+    ultima = max(completadas, key=lambda e: e.fecha_envio or e.fecha_asignacion)
+    pdf_path = Path(ultima.rubrica_pdf_path if tipo == "informe" else ultima.dictamen_pdf_path)
+
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="El archivo PDF no se encuentra en el servidor")
+
+    return FileResponse(path=str(pdf_path), media_type="application/pdf", filename=pdf_path.name)
+
 
 @router.post("/", response_model=ExpedienteResponse)
 def create_expediente(expediente: ExpedienteCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
